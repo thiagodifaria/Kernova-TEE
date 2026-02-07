@@ -1,0 +1,55 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.bin
+*.iso
+MicroHypervisor
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Debug
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# QEMU
+qemu.log
+qemu-debug.log
+
+# Test output
+test_results/
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# Documentation
+docs/html/
+docs/latex/
+Doxyfile
+
+# Temporary files
+*.tmp
+*.bak
+iso/

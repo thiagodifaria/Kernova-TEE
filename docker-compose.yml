@@ -1,0 +1,48 @@
+# =============================================================================
+# Micro-Hypervisor - Docker Compose
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # Build environment
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: tail -f /dev/null
+    networks:
+      - hypervisor-net
+
+  # Test runner
+  tester:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: ./scripts/test.sh
+    networks:
+      - hypervisor-net
+
+  # Web interface (se implementada)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: python3 interface/web.py
+    ports:
+      - "5000:5000"
+    networks:
+      - hypervisor-net
+
+networks:
+  hypervisor-net:
+    driver: bridge
