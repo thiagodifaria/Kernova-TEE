@@ -1,5 +1,5 @@
 # =============================================================================
-# Micro-Hypervisor - Docker Build Environment
+# Kernova-TEE - Docker Build Environment
 # =============================================================================
 # Nota: VT-x não funciona dentro de containers, mas podemos usar
 # Docker para build, testes unitários e CI/CD
@@ -9,7 +9,7 @@ FROM ubuntu:22.04
 
 # Metadata
 LABEL maintainer="thiag"
-LABEL description="Micro-Hypervisor build environment"
+LABEL description="Kernova-TEE build environment"
 LABEL version="1.0"
 
 # Prevenir prompts interativos

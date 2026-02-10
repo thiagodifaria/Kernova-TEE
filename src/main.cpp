@@ -1,5 +1,5 @@
 // =============================================================================
-// Micro-Hypervisor - C++ Orchestration Layer
+// Kernova-TEE - C++ Orchestration Layer
 // =============================================================================
 // High-level management and initialization for the hypervisor system
 // =============================================================================
@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 #include "../include/registers.hpp"
 
@@ -438,7 +439,7 @@ extern "C" {
 int hypervisor_init() {
     printf("\n");
     printf("========================================\n");
-    printf("  Micro-Hypervisor v1.0\n");
+    printf("  Kernova-TEE v1.0\n");
     printf("  Trusted Execution Environment\n");
     printf("========================================\n\n");
 

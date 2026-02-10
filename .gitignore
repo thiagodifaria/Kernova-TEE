@@ -7,7 +7,7 @@ build/
 *.exe
 *.bin
 *.iso
-MicroHypervisor
+Kernova
 
 # CMake
 CMakeCache.txt
@@ -53,3 +53,8 @@ Doxyfile
 *.tmp
 *.bak
 iso/
+dist/
+
+# Python
+__pycache__/
+*.pyc

@@ -1,5 +1,5 @@
 ; =============================================================================
-; Micro-Hypervisor - VMCS Configuration
+; Kernova-TEE - VMCS Configuration
 ; =============================================================================
 ; Configures the Virtual Machine Control Structure for guest operation
 ; Based on Intel SDM Volume 3C - Chapter 24 VMCS Fields
@@ -9,7 +9,7 @@ section .text
 bits 64
 
 ; Include VMX definitions
-%include "../../include/vmx_defs.inc"
+%include "vmx_defs.inc"
 
 ; External symbols
 extern vmexit_handler
@@ -184,7 +184,8 @@ configure_vmcs_control:
     and ebx, edx
 
     ; Write to VMCS
-    vmwriteq (VMCS_CTRL_16BIT | 0x0000), rbx
+    mov rcx, (VMCS_CTRL_16BIT | 0x0000)
+    vmwrite rcx, rbx
 
     ; Primary processor-based VM-execution controls
     mov ecx, IA32_VMX_PROCBASED_CTLS
@@ -192,7 +193,8 @@ configure_vmcs_control:
 
     mov rbx, rax
     ; Enable secondary controls, HLT exiting, CR3 load/store
-    or rbx, (PROC_BASED_HLT_EXIT | PROC_BASED_CR3_LOAD | PROC_BASED_CR3_STORE | PROC_BASED_SECONDARY_CTLS)
+    mov r8, (PROC_BASED_HLT_EXIT | PROC_BASED_CR3_LOAD | PROC_BASED_CR3_STORE | PROC_BASED_SECONDARY_CTLS)
+    or rbx, r8
     mov rcx, (VMCS_CTRL_32BIT | 0x4002)
     vmwrite rcx, rbx
 
@@ -236,51 +238,68 @@ configure_vmcs_guest:
     ; Guest segment selectors
     ; CS: Code segment (selector 0x08 = second GDT entry)
     mov rbx, 0x08
-    vmwriteq VMCS_GUEST_CS_SELECTOR, rbx
+    mov rcx, VMCS_GUEST_CS_SELECTOR
+    vmwrite rcx, rbx
 
     ; DS, ES, SS, FS, GS: Data segments (selector 0x10 = third GDT entry)
     mov rbx, 0x10
-    vmwriteq VMCS_GUEST_DS_SELECTOR, rbx
-    vmwriteq VMCS_GUEST_ES_SELECTOR, rbx
-    vmwriteq VMCS_GUEST_SS_SELECTOR, rbx
-    vmwriteq VMCS_GUEST_FS_SELECTOR, rbx
-    vmwriteq VMCS_GUEST_GS_SELECTOR, rbx
+    mov rcx, VMCS_GUEST_DS_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_ES_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_SS_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_FS_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_GS_SELECTOR
+    vmwrite rcx, rbx
 
     ; Guest segment limits (4GB)
     mov rbx, 0xFFFFFFFF
-    vmwriteq VMCS_GUEST_CS_LIMIT, rbx
-    vmwriteq VMCS_GUEST_DS_LIMIT, rbx
-    vmwriteq VMCS_GUEST_ES_LIMIT, rbx
-    vmwriteq VMCS_GUEST_SS_LIMIT, rbx
+    mov rcx, VMCS_GUEST_CS_LIMIT
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_DS_LIMIT
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_ES_LIMIT
+    vmwrite rcx, rbx
+    mov rcx, VMCS_GUEST_SS_LIMIT
+    vmwrite rcx, rbx
 
     ; Guest control registers
     ; CR0: PE (Protection Enable) + other necessary bits
     mov rbx, CR0_PE
-    vmwriteq VMCS_GUEST_CR0, rbx
+    mov rcx, VMCS_GUEST_CR0
+    vmwrite rcx, rbx
 
     ; CR3: Page table base (for now, identity mapped)
     mov rbx, 0
-    vmwriteq VMCS_GUEST_CR3, rbx
+    mov rcx, VMCS_GUEST_CR3
+    vmwrite rcx, rbx
 
     ; CR4: PAE + other bits
     mov rbx, (1 << 5)  ; PAE bit
-    vmwriteq VMCS_GUEST_CR4, rbx
+    mov rcx, VMCS_GUEST_CR4
+    vmwrite rcx, rbx
 
     ; Guest RIP and RSP (where guest starts execution)
     ; For this PoC, point to a safe location
     mov rbx, guest_entry_point
-    vmwriteq VMCS_GUEST_RIP, rbx
+    mov rcx, VMCS_GUEST_RIP
+    vmwrite rcx, rbx
 
     mov rbx, guest_stack_top
-    vmwriteq VMCS_GUEST_RSP, rbx
+    mov rcx, VMCS_GUEST_RSP
+    vmwrite rcx, rbx
 
     ; Guest RFLAGS (IF + other bits)
     mov rbx, 0x2  ; Interrupt enable flag
-    vmwriteq VMCS_GUEST_RFLAGS, rbx
+    mov rcx, VMCS_GUEST_RFLAGS
+    vmwrite rcx, rbx
 
     ; VMCS link pointer (invalid = not nested)
     mov rbx, VMCS_LINK_PTR_INVALID
-    vmwriteq VMCS_LINK_POINTER, rbx
+    mov rcx, VMCS_LINK_POINTER
+    vmwrite rcx, rbx
 
     mov eax, 1
     jmp .done
@@ -300,34 +319,45 @@ configure_vmcs_host:
 
     ; Host segment selectors
     mov rbx, 0x08  ; CS
-    vmwriteq VMCS_HOST_CS_SELECTOR, rbx
+    mov rcx, VMCS_HOST_CS_SELECTOR
+    vmwrite rcx, rbx
 
     mov rbx, 0x10  ; DS, ES, SS
-    vmwriteq VMCS_HOST_DS_SELECTOR, rbx
-    vmwriteq VMCS_HOST_ES_SELECTOR, rbx
-    vmwriteq VMCS_HOST_SS_SELECTOR, rbx
+    mov rcx, VMCS_HOST_DS_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_HOST_ES_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_HOST_SS_SELECTOR
+    vmwrite rcx, rbx
 
     mov rbx, 0
-    vmwriteq VMCS_HOST_FS_SELECTOR, rbx
-    vmwriteq VMCS_HOST_GS_SELECTOR, rbx
+    mov rcx, VMCS_HOST_FS_SELECTOR
+    vmwrite rcx, rbx
+    mov rcx, VMCS_HOST_GS_SELECTOR
+    vmwrite rcx, rbx
 
     ; Host control registers
     mov rbx, cr0
-    vmwriteq VMCS_HOST_CR0, rbx
+    mov rcx, VMCS_HOST_CR0
+    vmwrite rcx, rbx
 
     mov rbx, cr3
-    vmwriteq VMCS_HOST_CR3, rbx
+    mov rcx, VMCS_HOST_CR3
+    vmwrite rcx, rbx
 
     mov rbx, cr4
-    vmwriteq VMCS_HOST_CR4, rbx
+    mov rcx, VMCS_HOST_CR4
+    vmwrite rcx, rbx
 
     ; Host RIP (where to return on VM exit)
     mov rbx, vmexit_handler
-    vmwriteq VMCS_HOST_RIP, rbx
+    mov rcx, VMCS_HOST_RIP
+    vmwrite rcx, rbx
 
     ; Host RSP (stack for VM exit handler)
     mov rbx, host_stack_for_exit
-    vmwriteq VMCS_HOST_RSP, rbx
+    mov rcx, VMCS_HOST_RSP
+    vmwrite rcx, rbx
 
     mov eax, 1
     jmp .done
@@ -434,7 +464,7 @@ host_stack_for_exit:
     resq 1
 
 ; Guest stack
-align 16
+alignb 16
 guest_stack_bottom:
     resb 16384
 guest_stack_top:

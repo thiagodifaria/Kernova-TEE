@@ -1,14 +1,18 @@
 # =============================================================================
-# Micro-Hypervisor Build Configuration
+# Kernova-TEE Build Configuration
 # =============================================================================
-# CMake build system for the x86-64 Micro-Hypervisor project
+# CMake build system for the x86-64 Kernova-TEE project
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.20)
-project(MicroHypervisor
+
+# Enable NASM assembler BEFORE project() declaration
+set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)
+
+project(Kernova
     VERSION 1.0.0
-    DESCRIPTION "Trusted Execution Environment via Micro-Hypervisor"
-    LANGUAGES ASM CXX
+    DESCRIPTION "Trusted Execution Environment via Kernova-TEE"
+    LANGUAGES CXX ASM_NASM
 )
 
 # =============================================================================
@@ -17,9 +21,6 @@ project(MicroHypervisor
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)  # For Linux/ELF
-# For Windows, use: set(CMAKE_ASM_NASM_OBJECT_FORMAT win64)
 
 # =============================================================================
 # Build Type
@@ -37,7 +38,10 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
 
-set(CMAKE_ASM_NASM_FLAGS "${CMAKE_ASM_NASM_FLAGS} -f elf64")
+# NASM include paths:
+#   - Project root so relative paths like '../../include/' resolve from src/core/
+#   - Include directory directly for simple includes
+set(CMAKE_ASM_NASM_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/ -I${CMAKE_CURRENT_SOURCE_DIR}/include/")
 
 # =============================================================================
 # Source Files
@@ -53,6 +57,7 @@ set(ASM_SOURCES
 
 set(CPP_SOURCES
     src/main.cpp
+    src/vmx_stubs.cpp
 )
 
 set(HEADERS
@@ -62,9 +67,43 @@ set(HEADERS
 )
 
 # =============================================================================
+# NASM ASM Object Libraries
+# =============================================================================
+# Split into two groups:
+#   - kernova_asm_boot: Contains _start, VMX instructions, and privileged ops
+#     (cannot be linked into userspace test executables)
+#   - kernova_asm_testable: Pure computation (SIMD, trace) that can be
+#     linked into test executables for userspace testing
+# =============================================================================
+
+# Boot / VMX ASM (NOT linkable in userspace tests)
+set(ASM_BOOT_SOURCES
+    src/boot/entry.asm
+    src/core/vmx_init.asm
+    src/core/vmcs_config.asm
+    src/monitor/intercept.asm
+)
+
+# Testable ASM (pure computation, no privileged instructions)
+set(ASM_TESTABLE_SOURCES
+    src/marshall/simd_packer.asm
+    src/monitor/trace_engine.asm
+)
+
+add_library(kernova_asm_boot OBJECT ${ASM_BOOT_SOURCES})
+add_library(kernova_asm_testable OBJECT ${ASM_TESTABLE_SOURCES})
+
+# =============================================================================
 # Executable Target
 # =============================================================================
-add_executable(${PROJECT_NAME} ${ASM_SOURCES} ${CPP_SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME}
+    ${CPP_SOURCES}
+    ${HEADERS}
+    $<TARGET_OBJECTS:kernova_asm_testable>
+)
+# Note: kernova_asm_boot is excluded because entry.asm defines _start which
+# conflicts with libc's crt1.o. For bare-metal builds, re-add it and use
+# -nostdlib with the custom linker.ld.
 
 # =============================================================================
 # Include Directories
@@ -76,11 +115,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # =============================================================================
 # Linker Options
 # =============================================================================
-target_link_options(${PROJECT_NAME} PRIVATE
-    -nostdlib
-    -static
-    -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/linker.ld
-)
+# Note: -nostdlib and custom linker.ld are intended for bare-metal deployment.
+# For development/testing, we link against the standard library since main.cpp
+# uses printf, aligned_alloc, free, memset, etc.
+# To build for bare-metal, uncomment and provide custom implementations:
+# target_link_options(${PROJECT_NAME} PRIVATE -nostdlib -static
+#     -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/linker.ld)
+target_link_options(${PROJECT_NAME} PRIVATE -no-pie)
 
 # =============================================================================
 # Link Libraries
@@ -175,7 +216,7 @@ add_custom_target(iso
     COMMAND mkdir -p iso/boot/grub
     COMMAND cp ${PROJECT_NAME} iso/boot/${PROJECT_NAME}.bin
     COMMAND echo > iso/boot/grub/grub.cfg
-    COMMAND echo 'menuentry "Micro-Hypervisor" {' >> iso/boot/grub/grub.cfg
+    COMMAND echo 'menuentry "Kernova-TEE" {' >> iso/boot/grub/grub.cfg
     COMMAND echo '    multiboot2 /boot/${PROJECT_NAME}.bin' >> iso/boot/grub/grub.cfg
     COMMAND echo '    boot' >> iso/boot/grub/grub.cfg
     COMMAND echo '}' >> iso/boot/grub/grub.cfg

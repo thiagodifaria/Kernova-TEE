@@ -1,5 +1,5 @@
 ; =============================================================================
-; Micro-Hypervisor - VMX Initialization
+; Kernova-TEE - VMX Initialization
 ; =============================================================================
 ; Activates VMX mode and prepares the processor for virtualization
 ; Based on Intel SDM Volume 3C - Chapter 23 VMX Entry
@@ -9,7 +9,7 @@ section .text
 bits 64
 
 ; Include VMX definitions
-%include "../../include/vmx_defs.inc"
+%include "vmx_defs.inc"
 
 ; External symbols
 extern vmcs_setup
@@ -325,7 +325,7 @@ vmx_invept:
 
     ; For simplicity, assume it's supported
     ; Execute INVEPT
-    invept [rsi], rdi
+    invept rdi, oword [rsi]
 
     pop rbx
     pop rbp

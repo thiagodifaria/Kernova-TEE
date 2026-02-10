@@ -1,15 +1,20 @@
 ; =============================================================================
-; Micro-Hypervisor - Hardware Trace Engine & Integrity Monitor
+; Kernova-TEE - Hardware Trace Engine & Integrity Monitor
 ; =============================================================================
 ; Monitors kernel integrity and detects rootkit persistence mechanisms
 ; Uses hardware breakpoints and page table monitoring
 ; =============================================================================
+
+; Constants
+%define TRACE_MAX_EVENTS 1024
+%define TRACE_BUFFER_SIZE (32 * TRACE_MAX_EVENTS)
 
 section .text
 bits 64
 
 ; External symbols
 extern simd_hash_blocks
+extern simd_zero_memory
 
 ; Global symbols
 global trace_init
@@ -21,8 +26,6 @@ global trace_get_statistics
 ; =============================================================================
 ; Trace Event Types
 ; =============================================================================
-section .rodata
-
 ; Event severity levels
 %define TRACE_SEVERITY_INFO    0
 %define TRACE_SEVERITY_WARNING 1
@@ -48,14 +51,14 @@ trace_init:
 
     ; Initialize trace buffer
     mov rdi, trace_buffer
-    mov rcx, TRACE_BUFFER_SIZE
+    mov rsi, TraceBuffer_size
     call simd_zero_memory
 
     ; Initialize statistics
-    mov qword [trace_stats.event_count], 0
-    mov qword [trace_stats.critical_events], 0
-    mov qword [trace_stats.integrity_checks], 0
-    mov qword [trace_stats.integrity_failures], 0
+    mov qword [trace_stats + TraceStatistics.event_count], 0
+    mov qword [trace_stats + TraceStatistics.critical_events], 0
+    mov qword [trace_stats + TraceStatistics.integrity_checks], 0
+    mov qword [trace_stats + TraceStatistics.integrity_failures], 0
 
     ; Set up initial watchpoints on sensitive regions
     ; 1. IDT (Interrupt Descriptor Table)
@@ -94,12 +97,12 @@ trace_log_event:
     mov r13, rsi    ; event data
 
     ; Check if trace buffer is full
-    mov rax, [trace_buffer.write_index]
+    mov rax, [trace_buffer + TraceBuffer.write_index]
     cmp rax, TRACE_MAX_EVENTS
     jge .buffer_full
 
     ; Get pointer to next event slot
-    mov rbx, trace_buffer.events
+    lea rbx, [trace_buffer + TraceBuffer.events]
     shl rax, 5                    ; Each event is 32 bytes
     lea rdi, [rbx + rax]          ; RDI = event slot
 
@@ -115,16 +118,16 @@ trace_log_event:
     mov [rdi + TraceEvent.data], r13
 
     ; Update write index
-    lock inc qword [trace_buffer.write_index]
+    lock inc qword [trace_buffer + TraceBuffer.write_index]
 
     ; Update statistics
-    lock inc qword [trace_stats.event_count]
+    lock inc qword [trace_stats + TraceStatistics.event_count]
 
     ; Check if this is a critical event
     cmp r12, TRACE_SEVERITY_CRITICAL
     jne .not_critical
 
-    lock inc qword [trace_stats.critical_events]
+    lock inc qword [trace_stats + TraceStatistics.critical_events]
 
 .not_critical:
     xor eax, eax
@@ -155,7 +158,7 @@ trace_check_integrity:
     push r14
 
     ; Increment check counter
-    lock inc qword [trace_stats.integrity_checks]
+    lock inc qword [trace_stats + TraceStatistics.integrity_checks]
 
     ; Check 1: Verify IDT hasn't been modified
     mov rdi, "IDT "
@@ -184,7 +187,7 @@ trace_check_integrity:
     mov rsi, 0x01                ; IDT failure code
     call trace_log_event
 
-    lock inc qword [trace_stats.integrity_failures]
+    lock inc qword [trace_stats + TraceStatistics.integrity_failures]
     mov eax, -1
     jmp .done
 
@@ -193,7 +196,7 @@ trace_check_integrity:
     mov rsi, 0x02                ; GDT failure code
     call trace_log_event
 
-    lock inc qword [trace_stats.integrity_failures]
+    lock inc qword [trace_stats + TraceStatistics.integrity_failures]
     mov eax, -1
     jmp .done
 
@@ -202,7 +205,7 @@ trace_check_integrity:
     mov rsi, 0x03                ; Syscall failure code
     call trace_log_event
 
-    lock inc qword [trace_stats.integrity_failures]
+    lock inc qword [trace_stats + TraceStatistics.integrity_failures]
     mov eax, -1
 
 .done:
@@ -339,8 +342,8 @@ trace_set_watchpoint:
 .found_free:
     ; Set up watchpoint
     mov [rbx + Watchpoint.address], rdi
-    mov [rbx + Watchpoint.size], sil
-    mov [rbx + Watchpoint.type], dl
+    mov [rbx + Watchpoint.size], rsi
+    mov [rbx + Watchpoint.type], rdx
 
     ; In production, would program DR0-DR3 here
     ; mov dr0, rdi
@@ -430,28 +433,24 @@ compute_baseline_hashes:
 ; =============================================================================
 compare_memory:
     push rbx
-    xor rbx, rbx                ; result accumulator
+    xor rbx, rbx                ; difference accumulator
 
 .compare_loop:
     test rcx, rcx
     jz .done
 
     mov al, [rdi]
-    mov bl, [rsi]
-    cmp al, bl
-    je .equal
+    xor al, [rsi]               ; XOR to detect difference
+    or bl, al                   ; Accumulate differences (constant-time)
 
-    xor rbx, 1                  ; Mark as different
-
-.equal:
     inc rdi
     inc rsi
     dec rcx
     jmp .compare_loop
 
 .done:
-    test rbx, rbx
-    setz al                     ; Set if zero (equal)
+    test bl, bl
+    setz al                     ; Set if zero (all bytes equal)
     movzx eax, al
 
     pop rbx
@@ -468,7 +467,8 @@ struc TraceEvent
     .severity:     resb 1       ; 1 byte
     .reserved:     resb 2       ; 2 bytes
     .data:         resq 1       ; 8 bytes
-    ; Total: 20 bytes, rounded to 32 for alignment
+    .padding:      resb 12      ; 12 bytes padding to align to 32
+    ; Total: 32 bytes
 endstruc
 
 ; Integrity Entry Structure
@@ -478,7 +478,6 @@ struc IntegrityEntry
     .size:         resq 1       ; 8 bytes - region size
     .hash:         resb 32      ; 32 bytes - SHA-256 hash
 endstruc
-IntegrityEntry_size equ 56
 
 ; Watchpoint Structure
 struc Watchpoint
@@ -486,7 +485,6 @@ struc Watchpoint
     .size:         resq 1       ; 8 bytes
     .type:         resq 1       ; 8 bytes
 endstruc
-Watchpoint_size equ 24
 
 ; Trace Statistics Structure
 struc TraceStatistics
@@ -495,7 +493,6 @@ struc TraceStatistics
     .integrity_checks:  resq 1
     .integrity_failures: resq 1
 endstruc
-TraceStatistics_size equ 32
 
 ; Trace Buffer Structure
 struc TraceBuffer
@@ -503,15 +500,11 @@ struc TraceBuffer
     .read_index:  resq 1
     .write_index: resq 1
 endstruc
-TraceBuffer_size equ (TraceEvent_size * TRACE_MAX_EVENTS) + 16
 
 ; =============================================================================
 ; BSS Section - Data Storage
 ; =============================================================================
 section .bss
-
-%define TRACE_MAX_EVENTS 1024
-%define TRACE_BUFFER_SIZE (TraceEvent_size * TRACE_MAX_EVENTS)
 
 align 16
 
@@ -537,3 +530,6 @@ watchpoints:
 ; Temporary buffer for current hash
 current_hash_buffer:
     resb 32
+
+; Mark stack as non-executable
+section .note.GNU-stack noalloc noexec nowrite progbits

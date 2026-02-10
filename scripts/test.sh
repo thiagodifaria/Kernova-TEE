@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Micro-Hypervisor - Automated Test Script
+# Kernova-TEE - Automated Test Script
 # =============================================================================
 # Roda todos os testes e gera relatório
 # =============================================================================
@@ -50,7 +50,7 @@ run_test() {
 
 # Teste 1: Verificar se o binário existe
 test_binary_exists() {
-    [ -f "build/MicroHypervisor" ] || [ -f "MicroHypervisor" ]
+    [ -f "build/Kernova" ] || [ -f "Kernova" ]
 }
 
 # Teste 2: Verificar dependências
@@ -137,7 +137,7 @@ test_file_integrity() {
 main() {
     echo ""
     echo "========================================"
-    echo "  Micro-Hypervisor Test Suite"
+    echo "  Kernova-TEE Test Suite"
     echo "========================================"
     echo ""
 

@@ -1,5 +1,5 @@
 // =============================================================================
-// Micro-Hypervisor - Register Control Wrappers
+// Kernova-TEE - Register Control Wrappers
 // =============================================================================
 // C++20 wrapper for x86-64 register manipulation and VMX control
 // =============================================================================
@@ -181,8 +181,8 @@ struct [[gnu::packed]] SegmentDescriptor {
         limit_high_flags = (limit_high_flags & 0xF0) | ((limit >> 16) & 0x0F);
     }
 
-    void set_access(uint8_t access rights) noexcept {
-        access = access rights;
+    void set_access(uint8_t access_rights) noexcept {
+        access = access_rights;
     }
 };
 
@@ -200,13 +200,13 @@ struct [[gnu::packed]] GDTEntry {
         uint64_t desc = 0;
 
         // Base address
-        desc |= (base & 0xFFFF) << 16;
-        desc |= (base & 0xFF0000) << 16;
-        desc |= (base & 0xFF000000) << 32;
+        desc |= static_cast<uint64_t>(base & 0xFFFF) << 16;
+        desc |= static_cast<uint64_t>(base & 0xFF0000) << 16;
+        desc |= static_cast<uint64_t>(base & 0xFF000000) << 32;
 
         // Limit
         desc |= limit & 0xFFFF;
-        desc |= (limit & 0xF0000) << 48;
+        desc |= static_cast<uint64_t>(limit & 0xF0000) << 32;
 
         // Access byte
         desc |= (uint64_t)access << 40;

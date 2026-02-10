@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Micro-Hypervisor Web Interface
+Kernova-TEE Web Interface
 Dashboard para monitoramento e controle
 """
 
@@ -71,12 +71,12 @@ class ProjectManager:
     def get_status(self):
         """Retorna status do projeto"""
         status = {
-            'binary_exists': (self.build_dir / 'MicroHypervisor').exists(),
+            'binary_exists': (self.build_dir / 'Kernova').exists(),
             'build_dir_exists': self.build_dir.exists(),
         }
 
         if status['binary_exists']:
-            size = (self.build_dir / 'MicroHypervisor').stat().st_size
+            size = (self.build_dir / 'Kernova').stat().st_size
             status['binary_size'] = f"{size:,} bytes"
             status['binary_size_mb'] = f"{size / (1024*1024):.2f} MB"
 
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     html_content = '''<!DOCTYPE html>
 <html>
 <head>
-    <title>Micro-Hypervisor Dashboard</title>
+    <title>Kernova-TEE Dashboard</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -277,7 +277,7 @@ if __name__ == '__main__':
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛡️ Micro-Hypervisor Dashboard</h1>
+            <h1>🛡️ Kernova-TEE Dashboard</h1>
             <p>Trusted Execution Environment - Monitoramento e Controle</p>
         </div>
 
@@ -380,7 +380,7 @@ if __name__ == '__main__':
 
     print("""
 ╔════════════════════════════════════════╗
-║  Micro-Hypervisor Web Interface        ║
+║  Kernova-TEE Web Interface        ║
 ╚════════════════════════════════════════╝
 
 Acesse: http://localhost:5000

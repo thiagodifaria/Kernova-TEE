@@ -1,5 +1,5 @@
 ; =============================================================================
-; Micro-Hypervisor - AVX/AVX-512 SIMD Marshalling Macros
+; Kernova-TEE - AVX/AVX-512 SIMD Marshalling Macros
 ; =============================================================================
 ; Ultra-fast binary marshalling between Host OS and Secure Enclave
 ; =============================================================================
@@ -127,6 +127,7 @@
     mov rdi, %2
     mov rcx, %3
 
+%%transfer_loop:
     ; Check alignment for optimal performance
     test rsi, 0x3F              ; Check 64-byte alignment
     jnz %%unaligned
@@ -134,18 +135,20 @@
     ; Aligned transfer - use vmovdqa
     vmovdqa64 zmm0, [rsi]
     vmovdqa64 [rdi], zmm0
-    jmp %%done
+    jmp %%advance
 
 %%unaligned:
     ; Unaligned transfer - use vmovdqu
     vmovdqu64 zmm0, [rsi]
     vmovdqu64 [rdi], zmm0
 
-%%done:
+%%advance:
     add rsi, 64
     add rdi, 64
     sub rcx, 64
-    jg SIMD_SECURE_TRANSFER
+    jg %%transfer_loop
+
+%%done:
 %endmacro
 
 ; Macro: Initialize RDRAND hardware RNG

@@ -1,5 +1,5 @@
 ; =============================================================================
-; Micro-Hypervisor - VMCS Field Definitions
+; Kernova-TEE - VMCS Field Definitions
 ; =============================================================================
 ; Based on Intel SDM Volume 3C - Chapter 24 VMCS Fields
 ; =============================================================================
@@ -10,6 +10,10 @@
 ; Bits [10:0]  - Index
 
 ; VMCS Control Fields (Type = 00)
+%define VMCS_CTRL_16BIT           0x0000
+%define VMCS_CTRL_32BIT           0x4000
+%define VMCS_CTRL_64BIT           0x2000
+%define VMCS_CTRL_NATURAL_WIDTH   0x6000
 %define VM_CONTROL_16BIT          0x0000
 %define VM_CONTROL_64BIT          0x4000
 %define VM_CONTROL_32BIT          0x6000
@@ -74,6 +78,12 @@
 %define VMCS_HOST_RSP             0x6C1C
 %define VMCS_HOST_RIP             0x6C1E
 
+; VMCS Guest Register State (for CPUID intercept)
+%define VMCS_GUEST_RAX            0x681A
+%define VMCS_GUEST_RBX            0x6818
+%define VMCS_GUEST_RCX            0x681C
+%define VMCS_GUEST_RDX            0x681E
+
 ; VMCS Link Pointer
 %define VMCS_LINK_POINTER         0x2800
 
@@ -85,6 +95,10 @@
 
 ; VMCS Field Identifiers - VM-Entry Controls
 %define VMCS_ENTRY_CONTROLS       0x4012
+
+; CR0 Bits
+%define CR0_PE                    0x0001   ; Protection Enable
+%define CR0_WP                    0x10000  ; Write Protect
 
 ; CR4 Bits
 %define CR4_VMXE                  0x2000   ; Enable VMX operation
@@ -126,6 +140,7 @@
 %define EXIT_REASON_IO_INSTR      30
 %define EXIT_REASON_RDMSR         31
 %define EXIT_REASON_WRMSR         32
+%define EXIT_REASON_MSR_WRITE      32      ; Alias for WRMSR
 %define EXIT_REASON_ENTRY_FAIL_GUEST 33
 %define EXIT_REASON_ENTRY_FAIL_MSR  34
 %define EXIT_REASON_MWAIT         36
@@ -137,6 +152,7 @@
 ; Processor-Based VM-Execution Controls
 %define PROC_BASED_CR3_LOAD       (1 << 0)
 %define PROC_BASED_CR3_STORE      (1 << 1)
+%define PROC_BASED_HLT_EXIT       (1 << 7)
 %define PROC_BASED_SECONDARY_CTLS  (1 << 31)
 
 ; Pin-Based Controls

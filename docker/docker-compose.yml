@@ -1,5 +1,7 @@
 # =============================================================================
-# Micro-Hypervisor - Docker Compose
+# Kernova-TEE - Docker Compose
+# =============================================================================
+# Run from project root: docker-compose -f docker/docker-compose.yml up
 # =============================================================================
 
 version: '3.8'
@@ -8,41 +10,41 @@ services:
   # Build environment
   builder:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     volumes:
-      - .:/workspace
+      - ..:/workspace
     working_dir: /workspace
     command: tail -f /dev/null
     networks:
-      - hypervisor-net
+      - kernova-net
 
   # Test runner
   tester:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     volumes:
-      - .:/workspace
+      - ..:/workspace
     working_dir: /workspace
     command: ./scripts/test.sh
     networks:
-      - hypervisor-net
+      - kernova-net
 
-  # Web interface (se implementada)
+  # Web interface
   web:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     volumes:
-      - .:/workspace
+      - ..:/workspace
     working_dir: /workspace
     command: python3 interface/web.py
     ports:
       - "5000:5000"
     networks:
-      - hypervisor-net
+      - kernova-net
 
 networks:
-  hypervisor-net:
+  kernova-net:
     driver: bridge

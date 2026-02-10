@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Micro-Hypervisor CLI
+Kernova-TEE CLI
 Interface de linha de comando para gerenciar o projeto
 """
 
@@ -25,7 +25,7 @@ def print_banner():
     """Imprime banner do projeto"""
     banner = f"""
     {Colors.CYAN}╔════════════════════════════════════════╗
-    ║     Micro-Hypervisor v1.0           ║
+    ║     Kernova-TEE v1.0           ║
     ║  Trusted Execution Environment       ║
     ║                                      ║
     ║  Interface de Gerenciamento          ║
@@ -132,7 +132,7 @@ def run_qemu(debug: bool = False) -> bool:
     """Roda no QEMU"""
     log_info("Iniciando QEMU...")
 
-    binary = get_project_root() / 'build' / 'MicroHypervisor'
+    binary = get_project_root() / 'build' / 'Kernova'
     if not binary.exists():
         log_error("Binário não encontrado. Execute: python3 interface/cli.py build")
         return False
@@ -161,7 +161,7 @@ def run_docker_build() -> bool:
     log_info "Building Docker image..."
 
     ret, _, _ = run_command([
-        'docker', 'build', '-t', 'microhypervisor:latest', '.'
+        'docker', 'build', '-t', 'Kernova:latest', '.'
     ])
 
     return ret == 0
@@ -184,7 +184,7 @@ def show_status():
     root = get_project_root()
 
     # Verificar binário
-    binary = root / 'build' / 'MicroHypervisor'
+    binary = root / 'build' / 'Kernova'
     if binary.exists():
         size = binary.stat().st_size
         log_success(f"✓ Binário: {size:,} bytes")
@@ -253,7 +253,7 @@ def interactive_menu():
 def main():
     """Função principal"""
     parser = argparse.ArgumentParser(
-        description='Micro-Hypervisor CLI',
+        description='Kernova-TEE CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos:

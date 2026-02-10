@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Micro-Hypervisor - Automated Build Script
+# Kernova-TEE - Automated Build Script
 # =============================================================================
 # Instala dependências e compila o projeto automaticamente
 # =============================================================================
@@ -147,12 +147,12 @@ build_make() {
 verify_build() {
     log_info "Verificando build..."
 
-    if [ -f "build/MicroHypervisor" ]; then
-        local size=$(du -h build/MicroHypervisor | cut -f1)
+    if [ -f "build/Kernova" ]; then
+        local size=$(du -h build/Kernova | cut -f1)
         log_success "Binário criado: $size"
         return 0
-    elif [ -f "MicroHypervisor" ]; then
-        local size=$(du -h MicroHypervisor | cut -f1)
+    elif [ -f "Kernova" ]; then
+        local size=$(du -h Kernova | cut -f1)
         log_success "Binário criado: $size"
         return 0
     else
@@ -187,8 +187,8 @@ generate_docs() {
 create_package() {
     log_info "Criando package..."
 
-    local version=$(grep "project(MicroHypervisor VERSION" CMakeLists.txt | grep -oP '\d+\.\d+\.\d+')
-    local package_name="microhypervisor-${version}-$(uname -m)"
+    local version=$(grep "project(Kernova VERSION" CMakeLists.txt | grep -oP '\d+\.\d+\.\d+')
+    local package_name="Kernova-${version}-$(uname -m)"
 
     mkdir -p dist
     tar -czf "dist/${package_name}.tar.gz" \
@@ -203,7 +203,7 @@ create_package() {
 # Menu de help
 show_help() {
     cat << EOF
-Micro-Hypervisor - Build Script
+Kernova-TEE - Build Script
 
 Uso: $0 [OPÇÕES]
 
@@ -229,7 +229,7 @@ EOF
 main() {
     echo ""
     echo "========================================"
-    echo "  Micro-Hypervisor Build Script"
+    echo "  Kernova-TEE Build Script"
     echo "========================================"
     echo ""
 

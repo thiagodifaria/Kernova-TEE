@@ -6,7 +6,7 @@
 set -e
 
 echo "========================================"
-echo "  Micro-Hypervisor Build Environment"
+echo "  Kernova-TEE Build Environment"
 echo "========================================"
 echo ""
 

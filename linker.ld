@@ -1,5 +1,5 @@
 /* =============================================================================
- * Micro-Hypervisor Linker Script
+ * Kernova-TEE Linker Script
  * =============================================================================
  * Defines memory layout for the bare-metal hypervisor
  * ============================================================================= */
@@ -20,7 +20,6 @@ SECTIONS
     /* Text section (code) */
     .text ALIGN(4K) : {
         *(.text*)
-        *(.rodata*)
     }
 
     /* Read-only data */
@@ -46,8 +45,6 @@ SECTIONS
 
     /* Stack */
     .stack ALIGN(16) : {
-        *(.stack*)
-        . = ALIGN(16);
         *(.stack*)
         . += 0x4000;  /* 16KB stack */
         _stack_top = .;

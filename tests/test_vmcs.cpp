@@ -5,12 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-
-// Test basic VMCS field operations
-extern "C" {
-    int64_t vmcs_read(uint64_t field);
-    int64_t vmcs_write(uint64_t field, uint64_t value);
-}
+#include <cstdlib>
 
 // VMCS field encodings (from vmx_defs.inc)
 constexpr uint64_t VMCS_GUEST_CR0         = 0x6800;

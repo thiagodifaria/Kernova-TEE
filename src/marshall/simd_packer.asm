@@ -1,5 +1,5 @@
 ; =============================================================================
-; Micro-Hypervisor - SIMD Marshalling Engine
+; Kernova-TEE - SIMD Marshalling Engine
 ; =============================================================================
 ; Ultra-fast binary marshalling between Host OS and Secure Enclave
 ; Uses AVX2/AVX-512 for parallel data processing
@@ -9,7 +9,7 @@ section .text
 bits 64
 
 ; Include AVX macros
-%include "../../include/avx_macros.inc"
+%include "avx_macros.inc"
 
 ; External symbols
 extern get_vmx_region_ptr
@@ -79,6 +79,7 @@ simd_pack_data:
 
 .zero_size:
     xor eax, eax
+    jmp .pack_exit
 
 .pack_done:
     ; Clean up SIMD state
@@ -102,8 +103,8 @@ simd_pack_256bit:
     push rbp
     mov rbp, rsp
 
-    ; Initialize pack context
-    SIMD_PACK_INIT
+    ; Clean SIMD state
+    vzeroupper
 
     xor rbx, rbx                ; byte counter
     xor rcx, rcx                ; loop counter
@@ -161,7 +162,7 @@ simd_pack_256bit:
 
 .pack_complete:
     ; Return bytes transferred
-    mov eax, r14
+    mov rax, r14
 
     ; Clean up
     vzeroupper
@@ -196,8 +197,19 @@ simd_pack_512bit:
     jmp .pack_loop
 
 .pack_remaining:
-    ; Fall back to AVX2 for remaining
+    ; Adjust source/dest/size for bytes already copied by AVX-512
+    add r13, rbx            ; src += bytes_copied
+    add r12, rbx            ; dest += bytes_copied
+    sub r14, rbx            ; size -= bytes_copied
+    test r14, r14
+    jz .pack_512_done
+    ; Fall back to AVX2 for remaining < 64 bytes
     jmp simd_pack_256bit
+
+.pack_512_done:
+    mov rax, r14
+    pop rbp
+    ret
 
 ; =============================================================================
 ; simd_unpack_data - Unpack data from SIMD registers
@@ -229,8 +241,8 @@ simd_unpack_data:
     jz .zero_size
     jl .invalid_param
 
-    ; Initialize unpack context
-    SIMD_PACK_INIT
+    ; Clean SIMD state
+    vzeroupper
 
     xor rbx, rbx                ; byte counter
 
@@ -265,7 +277,7 @@ simd_unpack_data:
     rep movsb
 
 .unpack_complete:
-    mov eax, r14
+    mov rax, r14
     jmp .unpack_done
 
 .invalid_param:
@@ -352,10 +364,12 @@ simd_secure_memcpy:
     jz .memcpy_done
 
     mov rcx, rax
+    lea rsi, [r13 + rbx]
+    lea rdi, [r12 + rbx]
     rep movsb
 
 .memcpy_done:
-    mov eax, r14
+    mov rax, r14
     vzeroupper
     pop r14
     pop r13
@@ -408,12 +422,13 @@ simd_zero_memory:
     jz .zero_complete
 
     ; Use rep stosb for remaining
+    add rdi, rbx              ; rdi = buffer + offset
     mov rcx, rax
     xor eax, eax
     rep stosb
 
 .zero_complete:
-    mov eax, rsi
+    mov rax, rsi
 
 .zero_done:
     vzeroupper

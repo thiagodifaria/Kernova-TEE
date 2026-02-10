@@ -1,5 +1,5 @@
 # =============================================================================
-# Micro-Hypervisor Makefile
+# Kernova-TEE Makefile
 # =============================================================================
 # Simplificado para compilação rápida sem CMake
 # =============================================================================
@@ -33,7 +33,7 @@ ASM_OBJECTS = $(patsubst $(SRC_DIR)/%.asm,$(BUILD_DIR)/%.o,$(ASM_SOURCES))
 CPP_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(CPP_SOURCES))
 
 # Executável
-TARGET = $(BUILD_DIR)/MicroHypervisor
+TARGET = $(BUILD_DIR)/Kernova
 
 # Phony targets
 .PHONY: all clean run test dirs
@@ -95,7 +95,7 @@ test-run: test
 
 # Ajuda
 help:
-	@echo "Micro-Hypervisor Makefile"
+	@echo "Kernova-TEE Makefile"
 	@echo ""
 	@echo "Targets disponíveis:"
 	@echo "  all       - Compila o projeto (default)"

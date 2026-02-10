@@ -1,5 +1,5 @@
 ; =============================================================================
-; Micro-Hypervisor - VM Exit Handler & Rootkit Detector
+; Kernova-TEE - VM Exit Handler & Rootkit Detector
 ; =============================================================================
 ; Intercepts sensitive operations and detects rootkit behavior
 ; Monitors CR access, MSR writes, and syscall interception attempts
@@ -9,7 +9,7 @@ section .text
 bits 64
 
 ; Include VMX definitions
-%include "../../include/vmx_defs.inc"
+%include "vmx_defs.inc"
 
 ; External symbols
 extern trace_log_event
@@ -287,13 +287,16 @@ intercept_msr_write:
     call vmcs_read64
     mov rbx, rax                ; RBX = MSR address
 
-    cmp rax, 0xC0000082         ; IA32_LSTAR
+    mov rbx, 0xC0000082         ; IA32_LSTAR
+    cmp rax, rbx
     je .check_lstar_hook
 
-    cmp rax, 0xC0000081         ; IA32_STAR
+    mov rbx, 0xC0000081         ; IA32_STAR
+    cmp rax, rbx
     je .check_star_hook
 
-    cmp rax, 0xC0000084         ; IA32_SF_MASK
+    mov rbx, 0xC0000084         ; IA32_SF_MASK
+    cmp rax, rbx
     je .check_sfmask_hook
 
     ; Other MSRs - allow
@@ -483,7 +486,7 @@ EVENT_STAR_WRITE:
 EVENT_SFMASK_WRITE:
     db "IA32_SF_MASK write", 0
 
-EVENT suspicious_msr:
+EVENT_SUSPICIOUS_MSR:
     db "Suspicious MSR write", 0
 
 ; =============================================================================
