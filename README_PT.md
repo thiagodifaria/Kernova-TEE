@@ -499,7 +499,7 @@ Endereço      Região                Tamanho  Proteção           Descrição
 
 | Limitação | Razão | Mitigação |
 |-----------|-------|-----------|
-| Apenas Intel | Usa instruções VT-x (VMX) | Suporte AMD-V (SVM) planejado |
+| Apenas Intel | Usa instruções VT-x (VMX) | Escopo atual focado em Intel |
 | Dependência de BIOS | VT-x deve estar habilitado | Mensagem de erro orienta o usuário |
 | ~1-2% overhead | Custo de processamento de VMExit | Handlers de saída minimizados |
 | Sem VT-x no Docker | Limitação de hardware | Docker usado apenas para build/testes |

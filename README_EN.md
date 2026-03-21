@@ -499,7 +499,7 @@ Address       Region                Size    Protection         Description
 
 | Limitation | Reason | Mitigation |
 |------------|--------|------------|
-| Intel only | Uses VT-x (VMX) instructions | AMD-V (SVM) support planned |
+| Intel only | Uses VT-x (VMX) instructions | Current scope is Intel-focused |
 | BIOS dependency | VT-x must be enabled | Error message guides user |
 | ~1-2% overhead | VMExit processing cost | Minimized exit handlers |
 | No Docker VT-x | Hardware limitation | Docker used for build/test only |
