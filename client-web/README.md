@@ -1,6 +1,8 @@
 # Client Web
 
-Flask dashboard for local Kernova-TEE build, test and system status operations.
+Flask dashboard for local Kernova-TEE build, test, runtime and system status
+operations. When the Linux driver is loaded, the validation snapshot reports
+`/dev/kernova` and the C++ service selects the kernel-backed path.
 
 ```bash
 pip install -r client-web/requirements.txt

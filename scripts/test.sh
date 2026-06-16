@@ -10,7 +10,7 @@ ok() { printf "\033[0;32m[ok]\033[0m %s\n" "$1"; }
 
 for path in \
     "$SERVICE_DIR/src/main.cpp" \
-    "$SERVICE_DIR/src/core/vmx_init.asm" \
+    "$SERVICE_DIR/src/virtualization/intel_vmx/core/vmx_init.asm" \
     "$SERVICE_DIR/include/registers.hpp" \
     "$SERVICE_DIR/tests/CMakeLists.txt"; do
     [ -s "$path" ] || { echo "Missing required file: $path" >&2; exit 1; }

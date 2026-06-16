@@ -11,6 +11,7 @@
 
 # Include directories for all tests
 include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/../../shared)
 
 # =============================================================================
 # Test: SIMD Operations (links testable ASM)
@@ -53,3 +54,27 @@ add_executable(test_integrity
 target_compile_options(test_integrity PRIVATE -Wall -Wextra -mavx2 -fno-pie)
 target_link_options(test_integrity PRIVATE -no-pie)
 add_test(NAME test_integrity COMMAND test_integrity)
+
+# =============================================================================
+# Test: Virtualization Backend Selection (userspace-safe C++)
+# =============================================================================
+add_executable(test_backend
+    test_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/virtualization/cpu_features.cpp
+    ${CMAKE_SOURCE_DIR}/src/virtualization/hypervisor_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/virtualization/amd_svm/amd_svm.cpp
+    ${CMAKE_SOURCE_DIR}/src/vmx_stubs.cpp
+)
+target_compile_options(test_backend PRIVATE -Wall -Wextra)
+add_test(NAME test_backend COMMAND test_backend)
+
+# =============================================================================
+# Test: AMD SVM Capability Model (userspace-safe C++)
+# =============================================================================
+add_executable(test_amd_svm
+    test_amd_svm.cpp
+    ${CMAKE_SOURCE_DIR}/src/virtualization/cpu_features.cpp
+    ${CMAKE_SOURCE_DIR}/src/virtualization/amd_svm/amd_svm.cpp
+)
+target_compile_options(test_amd_svm PRIVATE -Wall -Wextra)
+add_test(NAME test_amd_svm COMMAND test_amd_svm)

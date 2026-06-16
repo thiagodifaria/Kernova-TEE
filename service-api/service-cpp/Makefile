@@ -18,11 +18,11 @@ INCLUDE_DIR = include
 TEST_DIR = tests
 
 # Arquivos Assembly
-ASM_SOURCES = $(SRC_DIR)/boot/entry.asm \
-              $(SRC_DIR)/core/vmx_init.asm \
-              $(SRC_DIR)/core/vmcs_config.asm \
+ASM_SOURCES = $(SRC_DIR)/virtualization/intel_vmx/boot/entry.asm \
+              $(SRC_DIR)/virtualization/intel_vmx/core/vmx_init.asm \
+              $(SRC_DIR)/virtualization/intel_vmx/core/vmcs_config.asm \
               $(SRC_DIR)/marshall/simd_packer.asm \
-              $(SRC_DIR)/monitor/intercept.asm \
+              $(SRC_DIR)/virtualization/intel_vmx/monitor/intercept.asm \
               $(SRC_DIR)/monitor/trace_engine.asm
 
 # Arquivos C++
@@ -47,6 +47,9 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/core
 	@mkdir -p $(BUILD_DIR)/marshall
 	@mkdir -p $(BUILD_DIR)/monitor
+	@mkdir -p $(BUILD_DIR)/virtualization/intel_vmx/boot
+	@mkdir -p $(BUILD_DIR)/virtualization/intel_vmx/core
+	@mkdir -p $(BUILD_DIR)/virtualization/intel_vmx/monitor
 	@mkdir -p $(BUILD_DIR)/tests
 
 # Compilar arquivos Assembly

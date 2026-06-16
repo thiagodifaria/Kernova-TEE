@@ -7,6 +7,13 @@ build/
 *.exe
 *.bin
 *.iso
+*.ko
+*.mod
+*.mod.c
+*.order
+*.symvers
+*.cmd
+.tmp_versions/
 Kernova
 
 # CMake
@@ -58,3 +65,4 @@ dist/
 # Python
 __pycache__/
 *.pyc
+client-web/templates/

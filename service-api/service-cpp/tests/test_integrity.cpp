@@ -126,10 +126,14 @@ void test_hash_collision() {
         uint8_t data[DATA_SIZE];
         uint8_t hash[32];
 
-        // Initialize data with pattern
+        // Initialize each sample with a distinct deterministic pattern.
         for (size_t j = 0; j < DATA_SIZE; ++j) {
-            data[j] = static_cast<uint8_t>((i + j) & 0xFF);
+            uint64_t mixed = (i + 1) * 0x9E3779B97F4A7C15ULL;
+            mixed ^= (j + 1) * 0xBF58476D1CE4E5B9ULL;
+            mixed ^= mixed >> 32;
+            data[j] = static_cast<uint8_t>(mixed & 0xFF);
         }
+        std::memcpy(data, &i, sizeof(i));
 
         simd_hash_blocks(data, DATA_SIZE, hash);
 

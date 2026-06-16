@@ -452,58 +452,126 @@ simd_hash_blocks:
     push r12
     push r13
     push r14
+    push r15
 
     mov r12, rdi    ; data
     mov r13, rsi    ; size
     mov r14, rdx    ; hash output
 
-    ; Simple hash for demonstration (use proper crypto in production!)
-    ; This is a basic XOR hash for demonstration purposes
+    ; Non-cryptographic 256-bit integrity hash for development tests.
+    ; This is intentionally stronger than a plain XOR accumulator so small
+    ; input changes spread across all output lanes.
+    test r14, r14
+    jz .invalid_param
+    test r12, r12
+    jz .invalid_data
 
-    ; Initialize hash values
-    vpxor ymm0, ymm0, ymm0    ; h0, h1, h2, h3 = 0
-    vpxor ymm1, ymm1, ymm1    ; h4, h5, h6, h7 = 0
-
+    mov r8,  0x243f6a8885a308d3
+    mov r9,  0x13198a2e03707344
+    mov r10, 0xa4093822299f31d0
+    mov r11, 0x082efa98ec4e6c89
+    xor r8, r13
+    mov rax, r13
+    shl rax, 17
+    xor r9, rax
+    mov r15, 0x100000001b3
     xor rbx, rbx
 
 .hash_loop:
-    mov rax, r13
-    sub rax, rbx
-    cmp rax, 32
-    jl .hash_remaining
+    cmp rbx, r13
+    jae .hash_finalize
 
-    ; Load 32 bytes and XOR into hash
-    vmovdqu ymm2, [r12 + rbx]
-    vpxor ymm0, ymm0, ymm2
+    movzx rax, byte [r12 + rbx]
 
-    add rbx, 32
+    mov rcx, rax
+    add rcx, rbx
+    xor r8, rcx
+    imul r8, r15
+    rol r8, 13
+
+    mov rcx, rbx
+    shl rcx, 8
+    xor rcx, rax
+    add r9, rcx
+    imul r9, r15
+    rol r9, 29
+
+    mov rcx, rax
+    shl rcx, 32
+    xor rcx, rbx
+    xor r10, rcx
+    imul r10, r15
+    rol r10, 37
+
+    lea rcx, [rax + rbx]
+    xor rcx, r11
+    imul rcx, r15
+    xor r11, rcx
+    rol r11, 43
+
+    inc rbx
     jmp .hash_loop
 
-.hash_remaining:
-    ; Handle remaining bytes
-    mov rax, r13
-    sub rax, rbx
-    test rax, rax
-    jz .hash_output
+.hash_finalize:
+    ; MurmurHash3-style finalizers per 64-bit lane.
+    mov rax, r8
+    call .fmix64
+    mov [r14], rax
 
-    ; XOR remaining bytes into hash
+    mov rax, r9
+    call .fmix64
+    mov [r14 + 8], rax
+
+    mov rax, r10
+    call .fmix64
+    mov [r14 + 16], rax
+
+    mov rax, r11
+    call .fmix64
+    mov [r14 + 24], rax
+
+    xor eax, eax
+    jmp .hash_done
+
+.invalid_data:
+    test r13, r13
+    jz .hash_zero
+
+.invalid_param:
+    mov eax, -1
+    jmp .hash_done
+
+.hash_zero:
+    mov rax, 0x243f6a8885a308d3
+    mov [r14], rax
+    mov rax, 0x13198a2e03707344
+    mov [r14 + 8], rax
+    mov rax, 0xa4093822299f31d0
+    mov [r14 + 16], rax
+    mov rax, 0x082efa98ec4e6c89
+    mov [r14 + 24], rax
+    xor eax, eax
+    jmp .hash_done
+
+.fmix64:
     mov rcx, rax
-    xor eax, eax
-.hash_byte_loop:
-    xor al, [r12 + rbx]
-    ; Insert into hash (simplified)
-    inc rbx
-    dec rcx
-    jg .hash_byte_loop
-
-.hash_output:
-    ; Store hash result
-    vmovdqu [r14], ymm0
-
-    xor eax, eax
+    shr rcx, 33
+    xor rax, rcx
+    mov rcx, 0xff51afd7ed558ccd
+    imul rax, rcx
+    mov rcx, rax
+    shr rcx, 33
+    xor rax, rcx
+    mov rcx, 0xc4ceb9fe1a85ec53
+    imul rax, rcx
+    mov rcx, rax
+    shr rcx, 33
+    xor rax, rcx
+    ret
 
 .hash_done:
     vzeroupper
+    pop r15
     pop r14
     pop r13
     pop r12

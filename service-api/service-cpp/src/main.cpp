@@ -10,28 +10,12 @@
 #include <cstring>
 #include <utility>
 
-#include "registers.hpp"
+#include "virtualization/hypervisor_backend.hpp"
 
 // =============================================================================
 // External Assembly Functions
 // =============================================================================
 extern "C" {
-    // Boot and initialization
-    void exception_handler();
-
-    // VMX operations
-    int64_t vmx_init();
-    void vmxon();
-    void vmxoff();
-    int64_t vmx_launch();
-    int64_t vmx_resume();
-
-    // VMCS operations
-    int64_t vmcs_setup();
-    int64_t vmcs_clear(uint64_t vmcs_ptr);
-    int64_t vmcs_load(uint64_t vmcs_ptr);
-    int64_t vmcs_launch_state();
-
     // SIMD marshalling
     int64_t simd_pack_data(uint8_t* dest, const uint8_t* src, uint64_t size, uint64_t flags);
     int64_t simd_unpack_data(uint8_t* dest, const uint8_t* src, uint64_t size, uint64_t flags);
@@ -45,8 +29,6 @@ extern "C" {
     int64_t trace_check_integrity();
     int64_t trace_set_watchpoint(uint64_t address, uint64_t size, uint64_t type);
 
-    // VM Exit handler
-    void vmexit_handler();
 }
 
 // =============================================================================
@@ -57,19 +39,26 @@ namespace config {
     constexpr uint64_t DATA_BUFFER_SIZE = 0x10000;     // 64KB data buffer
     constexpr uint64_t NUM_TRACES = 1024;
     constexpr uint64_t HEARTBEAT_INTERVAL_MS = 1000;
+
+    bool strict_vmx_required() {
+        const char* value = std::getenv("KERNOVA_STRICT_VMX");
+        return value && std::strcmp(value, "1") == 0;
+    }
+
+    bool hardware_backend_enabled() {
+        const char* value = std::getenv("KERNOVA_ENABLE_HARDWARE_BACKEND");
+        return value && std::strcmp(value, "1") == 0;
+    }
 }
 
 // =============================================================================
 // Hypervisor State
 // =============================================================================
 struct HypervisorState {
-    bool vmx_initialized{false};
-    bool vmcs_configured{false};
+    bool hardware_virtualization_validated{false};
     bool trace_enabled{false};
     bool enclave_active{false};
 
-    uint64_t vmxon_region{0};
-    uint64_t vmcs_region{0};
     uint64_t enclave_base{0};
 
     // Statistics
@@ -83,6 +72,7 @@ struct HypervisorState {
 };
 
 static HypervisorState g_hv_state;
+static kernova::virtualization::HypervisorBackend* g_backend{nullptr};
 
 // =============================================================================
 // Enclave Management
@@ -114,7 +104,7 @@ struct EnclaveBuffer {
 
     bool zero() {
         if (!data) return false;
-        return simd_zero_memory(data, size) == 0;
+        return simd_zero_memory(data, size) == static_cast<int64_t>(size);
     }
 };
 
@@ -204,90 +194,6 @@ int receive_data(uint8_t* dest, uint64_t size) {
 }
 
 } // namespace enclave
-
-// =============================================================================
-// VMX Management
-// =============================================================================
-namespace vmx {
-
-int init() {
-    using namespace hypervisor::regs;
-
-    printf("[*] Initializing VMX...\n");
-
-    // Check for VMX support
-    auto features = CPUID::get_features();
-    if (!features.ecx_vmx) {
-        printf("[-] VMX not supported by CPU\n");
-        return -1;
-    }
-    printf("[+] VMX supported by CPU\n");
-
-    // Enable VMX operation
-    if (!CR4::enable_vmx()) {
-        printf("[-] Failed to enable VMX in CR4\n");
-        return -2;
-    }
-    printf("[+] VMX enabled in CR4\n");
-
-    // Initialize VMX (assembly)
-    int64_t result = vmx_init();
-    if (result != 0) {
-        printf("[-] VMX initialization failed: %ld\n", result);
-        return -3;
-    }
-    printf("[+] VMX initialized successfully\n");
-
-    g_hv_state.vmx_initialized = true;
-    return 0;
-}
-
-int setup_vmcs() {
-    if (!g_hv_state.vmx_initialized) {
-        return -1;
-    }
-
-    printf("[*] Setting up VMCS...\n");
-
-    int64_t result = vmcs_setup();
-    if (result != 0) {
-        printf("[-] VMCS setup failed: %ld\n", result);
-        return -2;
-    }
-
-    printf("[+] VMCS configured successfully\n");
-    g_hv_state.vmcs_configured = true;
-
-    return 0;
-}
-
-int launch_guest() {
-    if (!g_hv_state.vmcs_configured) {
-        return -1;
-    }
-
-    printf("[*] Launching guest (host OS becomes guest)...\n");
-
-    // This will transfer control to the guest
-    // If it returns, something went wrong
-    int64_t result = vmx_launch();
-
-    // If we get here, VMLAUNCH failed
-    printf("[-] Guest launch failed: %ld\n", result);
-
-    return -1;
-}
-
-void shutdown() {
-    if (g_hv_state.vmx_initialized) {
-        printf("[*] Shutting down VMX...\n");
-        vmxoff();
-        g_hv_state.vmx_initialized = false;
-        printf("[+] VMX shutdown complete\n");
-    }
-}
-
-} // namespace vmx
 
 // =============================================================================
 // Monitoring and Security
@@ -394,7 +300,7 @@ void test_enclave_operations() {
     printf("\n[*] Testing enclave operations...\n");
 
     const char* test_message = "Hello, Secure Enclave!";
-    constexpr uint64_t msg_len = 24;
+    constexpr uint64_t msg_len = sizeof("Hello, Secure Enclave!") - 1;
 
     uint8_t recv_buffer[msg_len];
 
@@ -439,7 +345,7 @@ extern "C" {
 int hypervisor_init() {
     printf("\n");
     printf("========================================\n");
-    printf("  Kernova-TEE v1.0\n");
+    printf("  Kernova-TEE v2.0.0\n");
     printf("  Trusted Execution Environment\n");
     printf("========================================\n\n");
 
@@ -455,16 +361,41 @@ int hypervisor_init() {
         return -2;
     }
 
-    // Initialize VMX
-    if (vmx::init() != 0) {
-        printf("[-] Failed to initialize VMX\n");
-        return -3;
-    }
+    g_backend = &kernova::virtualization::select_backend();
+    auto backend_status = g_backend->status();
 
-    // Setup VMCS
-    if (vmx::setup_vmcs() != 0) {
-        printf("[-] Failed to setup VMCS\n");
-        return -4;
+    printf("[*] CPU Vendor: %s (%s)\n",
+           kernova::virtualization::cpu_vendor_name(backend_status.cpu.vendor),
+           backend_status.cpu.vendor_id);
+    printf("[*] Selected virtualization backend: %s\n", g_backend->name());
+
+    // Initialize hardware virtualization when the host/runtime allows it.
+    // Docker and normal userspace runs fall back to PoC mode so SIMD, enclave
+    // and monitor flows can be validated without privileged instructions.
+    if (g_backend->init() != 0) {
+        if (config::strict_vmx_required()) {
+            printf("[-] Failed to initialize hardware virtualization backend\n");
+            return -3;
+        }
+        printf("[!] %s; continuing in userspace PoC mode\n", backend_status.reason);
+    } else if (g_backend->setup_guest() != 0) {
+        if (config::strict_vmx_required()) {
+            printf("[-] Failed to setup hardware virtualization guest state\n");
+            return -4;
+        }
+        printf("[!] Guest setup unavailable; continuing in userspace PoC mode\n");
+    } else {
+        if (config::hardware_backend_enabled() && backend_status.kernel_driver_available) {
+            printf("[*] Attempting privileged kernel driver launch...\n");
+            if (g_backend->launch() != 0) {
+                if (config::strict_vmx_required()) {
+                    printf("[-] Kernel driver launch failed\n");
+                    return -5;
+                }
+                printf("[!] Kernel driver launch did not complete; continuing in PoC mode\n");
+            }
+        }
+        g_hv_state.hardware_virtualization_validated = g_backend->status().hardware_validated;
     }
 
     printf("\n[+] Hypervisor initialization complete\n");
@@ -493,13 +424,19 @@ void hypervisor_main() {
     // Statistics
     printf("========================================\n");
     printf("  Statistics:\n");
-    printf("  - VMX Initialized: %s\n",
-           g_hv_state.vmx_initialized ? "Yes" : "No");
+    printf("  - Backend: %s\n", g_backend ? g_backend->name() : "Unknown");
+    printf("  - Hardware Virtualization: %s\n",
+           g_hv_state.hardware_virtualization_validated ? "Validated" : "PoC/Fallback");
     printf("  - Enclave Active: %s\n",
            g_hv_state.enclave_active ? "Yes" : "No");
     printf("  - Data Transferred: %lu bytes\n",
            g_hv_state.data_transferred_bytes);
     printf("========================================\n\n");
+
+    if (!g_hv_state.hardware_virtualization_validated) {
+        printf("[*] Userspace PoC run complete\n");
+        return;
+    }
 
     // Halt - in production would be in VM loop
     while (true) {
@@ -511,7 +448,9 @@ void hypervisor_main() {
 void hypervisor_shutdown() {
     printf("\n[*] Shutting down hypervisor...\n");
 
-    vmx::shutdown();
+    if (g_backend) {
+        g_backend->shutdown();
+    }
     enclave::cleanup();
 
     printf("[+] Hypervisor shutdown complete\n");

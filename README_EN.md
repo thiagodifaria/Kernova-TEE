@@ -2,12 +2,14 @@
 
 ![Kernova-TEE](https://img.shields.io/badge/Kernova--TEE-Trusted%20Execution%20Environment-111827?style=for-the-badge)
 
-**Kernova-TEE is a research-oriented Type-1 micro-hypervisor for x86-64 systems, implemented with NASM Assembly and a C++20 orchestration layer. It explores hardware-backed isolation, VMX root-mode monitoring, SIMD-assisted secure data movement and low-level integrity checks for trusted execution scenarios.**
+**Kernova-TEE is a research-oriented x86-64 trusted execution project implemented with NASM Assembly, C++20 and a privileged Linux validation driver. It explores hardware-backed isolation through Intel VMX and AMD SVM, SIMD-assisted secure data movement and low-level integrity checks for trusted execution scenarios.**
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-2563EB?style=flat)](README.md)
+[![Version](https://img.shields.io/badge/Version-2.0.0-2563EB?style=flat)](README.md)
 [![Assembly](https://img.shields.io/badge/x86--64-NASM-525252?style=flat)](service-api/service-cpp/src)
 [![C++](https://img.shields.io/badge/C++-20-00599C?style=flat&logo=cplusplus&logoColor=white)](service-api/service-cpp)
-[![Intel VT-x](https://img.shields.io/badge/Intel%20VT--x-VMX-0071C5?style=flat&logo=intel&logoColor=white)](service-api/service-cpp/src/core)
+[![Intel VT-x](https://img.shields.io/badge/Intel%20VT--x-VMX-0071C5?style=flat&logo=intel&logoColor=white)](service-api/service-cpp/src/virtualization/intel_vmx/core)
+[![AMD SVM](https://img.shields.io/badge/AMD--V-SVM-ED1C24?style=flat)](service-api/service-cpp/src/virtualization/amd_svm)
+[![Kernel Driver](https://img.shields.io/badge/Linux%20Driver-/dev/kernova-111827?style=flat&logo=linux&logoColor=white)](service-kernel/linux)
 [![SIMD](https://img.shields.io/badge/SIMD-AVX2%20%7C%20AVX--512-6B7280?style=flat)](service-api/service-cpp/src/marshall)
 [![Runtime](https://img.shields.io/badge/Runtime-Docker%20Compose-2496ED?style=flat&logo=docker&logoColor=white)](infra)
 [![License](https://img.shields.io/badge/License-MIT-success?style=flat)](LICENSE)
@@ -24,7 +26,7 @@
 
 ## Overview
 
-Kernova-TEE models a trusted execution boundary built around Intel VT-x. The project places a small hypervisor monitor in VMX root mode and treats the host operating system as a guest running in VMX non-root mode. The goal is to explore how a hardware-controlled monitor can isolate sensitive memory, intercept integrity-relevant events and move data through controlled marshalling paths.
+Kernova-TEE models a trusted execution boundary built around hardware-assisted virtualization on x86-64. The project keeps the Intel VMX path, adds an AMD SVM path for AMD hosts and introduces a Linux kernel driver so privileged validation can move from userspace modeling to `/dev/kernova`. The goal is to explore how a hardware-controlled monitor can isolate sensitive memory, intercept integrity-relevant events and move data through controlled marshalling paths.
 
 The project is intentionally close to the hardware. Most VMX and SIMD operations are implemented in x86-64 Assembly, while C++20 provides the orchestration layer for state management, lifecycle control, testing and development-mode execution.
 
@@ -55,36 +57,40 @@ The central design assumption is that a smaller, hardware-controlled monitor can
 - VMExit-oriented monitoring for control-register writes, IA32_LSTAR changes, descriptor-table modifications and guest `VMCALL` operations.
 - SIMD data marshalling routines using AVX2 and AVX-512-oriented Assembly.
 - Secure copy, secure zeroing, pack/unpack and block-hash routines exposed as C-callable symbols.
-- C++20 orchestration for VMX initialization, enclave buffers, monitor state and development-mode self-tests.
+- C++20 orchestration for virtualization backend selection, enclave buffers, monitor state and development-mode self-tests.
+- Backend boundary prepared for Kernel Driver, Intel VMX, AMD SVM and userspace PoC fallback.
+- Linux privileged validation driver exposing `/dev/kernova` through a shared ioctl ABI.
+- AMD SVM Ring 0 preparation path with `EFER.SVME`, `VM_HSAVE_PA`, VMCB allocation, host-save area allocation and guarded `VMRUN`.
 - Native test suite covering SIMD behavior, performance, VMCS field validation and integrity routines.
 - Docker Compose development environment for reproducible Linux builds from Windows, macOS or Linux hosts.
-- CLI and Flask dashboard for local operational workflows.
+- Flask validation console for local build, test, status and runtime workflows.
 
 ---
 
 ## Repository Layout
 
 ```text
-client-cli/
-  main.py                         Terminal management client
-
 client-web/
-  app.py                          Flask dashboard for build/test/status operations
+  app.py                          Flask validation console for build/test/status operations
   requirements.txt
 
 service-api/
   service-cpp/
     src/
-      boot/                       Boot entry, long-mode checks and processor setup
-      core/                       VMX initialization and VMCS configuration
       marshall/                   SIMD pack/unpack/copy/hash routines
-      monitor/                    VMExit interception and integrity tracing
+      monitor/                    Trace engine and integrity routines
+      virtualization/
+        amd_svm/                  AMD SVM capability and VMCB model
+        intel_vmx/                Intel VMX boot, VMCS and VMExit routines
+        cpu_features.cpp          CPU vendor and capability detection
+        hypervisor_backend.cpp    Backend selection and lifecycle
       main.cpp                    C++20 orchestration layer
       vmx_stubs.cpp               Userspace-safe VMX stubs for development builds
     include/
       vmx_defs.inc                VMCS encodings and VMX constants
       avx_macros.inc              SIMD macro library
       registers.hpp               CPUID, CR and MSR wrappers
+      virtualization/             Backend interfaces and CPU feature model
     tests/                        Native CTest suites
     CMakeLists.txt                Primary build system
     Makefile                      Alternative low-level build path
@@ -94,16 +100,30 @@ infra/
   Dockerfile                      Linux build and test image
   compose.yaml                    Builder, tester and web services
 
+service-kernel/
+  linux/
+    kernova_main.c                /dev/kernova device and ioctl dispatcher
+    amd_svm/                      AMD SVM privileged validation path
+    intel_vmx/                    Intel VMX capability stub for this milestone
+    include/                      Kernel-side driver state and interfaces
+    Makefile                      Linux kernel module build entrypoint
+
+shared/
+  kernova_abi.h                   Shared user space/kernel ioctl contract
+
 scripts/
   build.sh                        Build, clean, package and pipeline entrypoint
   test.sh                         CMake + CTest entrypoint
   docker-entrypoint.sh            Container command dispatcher
+  kernel-build.sh                 Linux kernel module build helper
+  kernel-load.sh                  Safe or VMRUN-enabled driver load helper
+  kernel-unload.sh                Driver unload helper
 
 docs/
   ARCHITECTURE.md                 Repository and subsystem boundaries
 ```
 
-This layout follows the same repository convention used by the other service-oriented projects in the workspace: clients stay under `client-*`, backend implementations stay under `service-api/service-*`, infrastructure stays under `infra`, operational scripts stay under `scripts`, and architectural material stays under `docs`.
+This layout follows the same repository convention used by the other service-oriented projects in the workspace: clients stay under `client-*`, backend implementations stay under `service-api/service-*`, privileged kernel components stay under `service-kernel`, infrastructure stays under `infra`, operational scripts stay under `scripts`, shared ABI files stay under `shared`, and architectural material stays under `docs`.
 
 ---
 
@@ -119,7 +139,7 @@ Ring -1 / VMX root mode
   VMExit handlers
   Integrity tracing
 
-Ring 0 / VMX non-root mode
+Ring 0 / VMX non-root or SVM guest mode
   Guest operating system
   Kernel drivers
   Syscall entry points
@@ -146,16 +166,53 @@ _start (entry.asm)
 hypervisor_init (main.cpp)
   -> initialize trace monitor
   -> allocate enclave buffer
-  -> initialize VMX state
-  -> prepare VMXON region
-  -> configure VMCS guest/host state
+  -> detect CPU vendor and virtualization capabilities
+  -> select Kernel Driver, Intel VMX, AMD SVM or userspace PoC backend
+  -> initialize hardware backend when available
   -> run development-mode self-tests
   -> enter proof-of-concept idle loop
 ```
 
-### VMX Hypervisor Core
+### Virtualization Backend Boundary
 
-`service-api/service-cpp/src/core` contains the low-level VMX routines.
+`service-api/service-cpp/src/virtualization` owns backend selection and CPU capability detection. It preserves Intel VMX behind this boundary, prepares the AMD SVM runtime context, exposes structured validation data to the web console and prefers the Linux kernel driver when `/dev/kernova` is loaded.
+
+| Backend | Current Status | Purpose |
+|---------|----------------|---------|
+| Kernel Driver | Privileged Linux path | Talks to `/dev/kernova` and delegates hardware validation to Ring 0 |
+| Userspace PoC | Active fallback | Validates SIMD, enclave, trace and integrity flows without privileged instructions |
+| Intel VMX | Existing target | Uses the current VMX/VMCS path when VT-x is available |
+| AMD SVM | Minimal runtime context prepared | Detects AMD SVM features, prepares VMCB/host-save state and reserves `VMRUN` for the Linux kernel driver |
+
+Hardware backend execution is disabled by default in development builds. To explicitly attempt hardware virtualization, set `KERNOVA_ENABLE_HARDWARE_BACKEND=1` or `KERNOVA_STRICT_VMX=1`.
+
+### Linux Kernel Driver
+
+`service-kernel/linux` is the privileged validation harness. It creates `/dev/kernova`, implements the shared ABI from `shared/kernova_abi.h` and starts with the AMD SVM path because the available bare-metal validation machine is AMD.
+
+| ioctl | Purpose |
+|-------|---------|
+| `KERNOVA_IOCTL_QUERY_CAPS` | Report CPU vendor, VMX/SVM capability and driver state |
+| `KERNOVA_IOCTL_INIT_BACKEND` | Initialize the privileged backend |
+| `KERNOVA_IOCTL_CREATE_VM` | Allocate and prepare a minimal VM context |
+| `KERNOVA_IOCTL_RUN_VM` | Attempt guest execution when explicitly enabled |
+| `KERNOVA_IOCTL_DESTROY_VM` | Tear down allocated VM state |
+
+### AMD SVM Backend Model
+
+`service-api/service-cpp/src/virtualization/amd_svm` owns the AMD-V/SVM capability model used by backend selection. It detects SVM revision, ASID count and optional features such as nested paging, NRIP save, VMCB clean bits, decode assists and pause filtering. It also prepares a minimal runtime context with a 4KB-aligned VMCB page and host-save area. `VMRUN` remains blocked in userspace builds and is reserved for the privileged Linux driver.
+
+| Area | Data / Interface | Purpose |
+|------|------------------|---------|
+| SVM discovery | CPUID `0x80000001`, `0x8000000A` | Detect SVM support and implementation features |
+| Control MSRs | `EFER.SVME`, `VM_CR`, `VM_HSAVE_PA` | Model the registers required before `VMRUN` |
+| VMCB page | `amd_svm::Vmcb` | Prepare the 4KB control/save-state page layout |
+| Runtime context | `amd_svm::SvmRuntimeContext` | Hold VMCB, host-save area and launch state |
+| Capability model | `amd_svm::SvmCapabilities` | Expose SVM readiness to backend selection and tests |
+
+### Intel VMX Backend
+
+`service-api/service-cpp/src/virtualization/intel_vmx/core` contains the low-level VMX routines.
 
 | Operation | Instruction / Interface | Purpose |
 |-----------|-------------------------|---------|
@@ -221,15 +278,19 @@ The C-callable monitor functions include `trace_init`, `trace_log_event`, `trace
 
 | Module | Language | Purpose |
 |--------|----------|---------|
-| `src/boot/entry.asm` | NASM | Boot entry, long-mode checks, VMX support checks and SIMD setup |
-| `src/core/vmx_init.asm` | NASM | VMXON region setup, VMX activation and VMX transition helpers |
-| `src/core/vmcs_config.asm` | NASM | VMCS guest/host state and control-field configuration |
+| `src/virtualization/intel_vmx/boot/entry.asm` | NASM | Boot entry, long-mode checks, VMX support checks and SIMD setup |
+| `src/virtualization/intel_vmx/core/vmx_init.asm` | NASM | VMXON region setup, VMX activation and VMX transition helpers |
+| `src/virtualization/intel_vmx/core/vmcs_config.asm` | NASM | VMCS guest/host state and control-field configuration |
 | `src/marshall/simd_packer.asm` | NASM | SIMD copy, zero, pack, unpack and block-hash routines |
-| `src/monitor/intercept.asm` | NASM | VMExit dispatch and handler stubs |
+| `src/virtualization/intel_vmx/monitor/intercept.asm` | NASM | VMExit dispatch and handler stubs |
 | `src/monitor/trace_engine.asm` | NASM | Event logging, integrity checks and watchpoint handling |
-| `src/main.cpp` | C++20 | Hypervisor, enclave, VMX, monitor and test orchestration |
+| `src/main.cpp` | C++20 | Hypervisor, enclave, backend, monitor and test orchestration |
 | `src/vmx_stubs.cpp` | C++20 | Development-mode VMX stubs for userspace builds |
+| `src/virtualization/amd_svm/amd_svm.cpp` | C++20 | AMD SVM capability mapping and VMCB initialization |
+| `src/virtualization/cpu_features.cpp` | C++20 | CPU vendor and VMX/SVM capability detection |
+| `src/virtualization/hypervisor_backend.cpp` | C++20 | Backend selection for userspace PoC, Intel VMX and AMD SVM |
 | `include/registers.hpp` | C++20 | CPUID, control-register and MSR helper wrappers |
+| `include/virtualization/*.hpp` | C++20 | Backend interfaces and CPU feature model |
 | `include/vmx_defs.inc` | NASM | VMCS constants and VMX definitions |
 | `include/avx_macros.inc` | NASM | AVX helper macros |
 
@@ -241,11 +302,12 @@ The C-callable monitor functions include `trace_init`, `trace_log_event`, `trace
 
 | Requirement | Detail |
 |-------------|--------|
-| CPU | Intel processor with VT-x support for hardware execution |
-| Firmware | Intel Virtualization Technology enabled in BIOS/UEFI |
+| CPU | Intel VT-x or AMD-V/SVM processor for future hardware execution |
+| Firmware | Virtualization enabled in BIOS/UEFI |
 | SIMD | AVX2 recommended; AVX-512 paths are modeled where available |
 | OS | Linux for direct native validation; Docker is recommended from Windows/macOS |
 | Toolchain | CMake, NASM, GCC/G++, QEMU and Docker for the standard workflow |
+| Kernel driver | Linux headers for the running kernel when building `service-kernel/linux` |
 
 ### Linux Packages
 
@@ -270,24 +332,22 @@ docker compose -f infra/compose.yaml run --rm builder
 docker compose -f infra/compose.yaml run --rm tester
 ```
 
-### CLI
-
-```bash
-python3 client-cli/main.py
-python3 client-cli/main.py build --clean
-python3 client-cli/main.py test
-python3 client-cli/main.py status
-python3 client-cli/main.py run
-python3 client-cli/main.py run --debug
-```
-
-### Web Dashboard
+### Web Validation Console
 
 ```bash
 docker compose -f infra/compose.yaml up web
 ```
 
-The dashboard is exposed at `http://localhost:5000`.
+The validation console is exposed at `http://localhost:5000`.
+
+Console endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/status` | Binary, dependency, system and virtualization status |
+| `/api/validation` | Structured validation snapshot for the browser UI |
+| `/api/test` | Runs the CTest suite |
+| `/api/runtime` | Runs the Kernova runtime validation flow |
 
 ### Manual CMake Build
 
@@ -295,6 +355,27 @@ The dashboard is exposed at `http://localhost:5000`.
 cmake -S service-api/service-cpp -B service-api/service-cpp/build -DCMAKE_BUILD_TYPE=Release
 cmake --build service-api/service-cpp/build --parallel
 ctest --test-dir service-api/service-cpp/build --output-on-failure
+```
+
+### Linux Kernel Driver
+
+Build the module on Linux bare metal:
+
+```bash
+bash scripts/kernel-build.sh
+```
+
+Load the driver in safe mode:
+
+```bash
+bash scripts/kernel-load.sh
+```
+
+Load the driver with experimental AMD `VMRUN` enabled:
+
+```bash
+bash scripts/kernel-load.sh vmrun
+KERNOVA_ENABLE_HARDWARE_BACKEND=1 ./service-api/service-cpp/build/Kernova
 ```
 
 ### QEMU
@@ -328,12 +409,15 @@ Test suites:
 | `test_vmcs` | VMCS field encoding and configuration invariants | No direct VMX execution |
 | `test_performance` | SIMD throughput and latency measurements | No |
 | `test_integrity` | Hash determinism, avalanche behavior, collision checks and monitor routines | No |
+| `test_backend` | CPU capability detection and virtualization backend selection | No |
+| `test_amd_svm` | AMD SVM capability model and VMCB layout | No |
 
 Current validation status:
 
 - Docker/Linux build succeeds.
-- `test_simd`, `test_vmcs` and `test_performance` pass.
-- `test_integrity` currently fails known hash-quality assertions related to avalanche and collision behavior in `simd_hash_blocks`.
+- `test_simd`, `test_vmcs`, `test_performance`, `test_integrity`, `test_backend` and `test_amd_svm` pass.
+- Hardware VMX/SVM execution remains environment-gated and is not claimed by Docker validation.
+- Linux kernel driver validation is pending bare-metal execution on a machine with matching kernel headers and virtualization enabled in firmware.
 
 ---
 
@@ -371,6 +455,7 @@ Limitations:
 - This is a proof of concept, not a formally verified TEE.
 - The current hash primitive is not cryptographically sufficient, as reflected by `test_integrity`.
 - VMX root execution cannot be validated inside standard Docker containers.
+- AMD SVM `VMRUN` is present only through the Linux driver and is gated by `allow_vmrun=1` plus `KERNOVA_ENABLE_HARDWARE_BACKEND=1`.
 - Hardware behavior depends on CPU model, firmware configuration and host virtualization policy.
 - The project does not yet implement a complete EPT-based isolation policy suitable for production use.
 

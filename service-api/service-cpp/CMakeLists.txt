@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.20)
 set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)
 
 project(Kernova
-    VERSION 1.0.0
+    VERSION 2.0.0
     DESCRIPTION "Trusted Execution Environment via Kernova-TEE"
     LANGUAGES CXX ASM_NASM
 )
@@ -45,23 +45,30 @@ set(CMAKE_ASM_NASM_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/include/")
 # Source Files
 # =============================================================================
 set(ASM_SOURCES
-    src/boot/entry.asm
-    src/core/vmx_init.asm
-    src/core/vmcs_config.asm
+    src/virtualization/intel_vmx/boot/entry.asm
+    src/virtualization/intel_vmx/core/vmx_init.asm
+    src/virtualization/intel_vmx/core/vmcs_config.asm
     src/marshall/simd_packer.asm
-    src/monitor/intercept.asm
+    src/virtualization/intel_vmx/monitor/intercept.asm
     src/monitor/trace_engine.asm
 )
 
 set(CPP_SOURCES
     src/main.cpp
     src/vmx_stubs.cpp
+    src/virtualization/cpu_features.cpp
+    src/virtualization/hypervisor_backend.cpp
+    src/virtualization/amd_svm/amd_svm.cpp
 )
 
 set(HEADERS
     include/vmx_defs.inc
     include/avx_macros.inc
     include/registers.hpp
+    include/virtualization/amd_svm.hpp
+    include/virtualization/cpu_features.hpp
+    include/virtualization/hypervisor_backend.hpp
+    ../../shared/kernova_abi.h
 )
 
 # =============================================================================
@@ -76,10 +83,10 @@ set(HEADERS
 
 # Boot / VMX ASM (NOT linkable in userspace tests)
 set(ASM_BOOT_SOURCES
-    src/boot/entry.asm
-    src/core/vmx_init.asm
-    src/core/vmcs_config.asm
-    src/monitor/intercept.asm
+    src/virtualization/intel_vmx/boot/entry.asm
+    src/virtualization/intel_vmx/core/vmx_init.asm
+    src/virtualization/intel_vmx/core/vmcs_config.asm
+    src/virtualization/intel_vmx/monitor/intercept.asm
 )
 
 # Testable ASM (pure computation, no privileged instructions)
@@ -108,6 +115,7 @@ add_executable(${PROJECT_NAME}
 # =============================================================================
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../shared
 )
 
 # =============================================================================
