@@ -1,21 +1,20 @@
 # =============================================================================
 # Kernova-TEE - Docker Compose
 # =============================================================================
-# Run from project root: docker-compose -f docker/docker-compose.yml up
+# Run from project root: docker compose -f infra/compose.yaml up
 # =============================================================================
-
-version: '3.8'
 
 services:
   # Build environment
   builder:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: infra/Dockerfile
     volumes:
       - ..:/workspace
+      - kernova-build:/workspace/service-api/service-cpp/build
     working_dir: /workspace
-    command: tail -f /dev/null
+    command: ./scripts/build.sh --build
     networks:
       - kernova-net
 
@@ -23,9 +22,10 @@ services:
   tester:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: infra/Dockerfile
     volumes:
       - ..:/workspace
+      - kernova-build:/workspace/service-api/service-cpp/build
     working_dir: /workspace
     command: ./scripts/test.sh
     networks:
@@ -35,11 +35,12 @@ services:
   web:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: infra/Dockerfile
     volumes:
       - ..:/workspace
+      - kernova-build:/workspace/service-api/service-cpp/build
     working_dir: /workspace
-    command: python3 interface/web.py
+    command: python3 client-web/app.py
     ports:
       - "5000:5000"
     networks:
@@ -48,3 +49,6 @@ services:
 networks:
   kernova-net:
     driver: bridge
+
+volumes:
+  kernova-build:

@@ -39,6 +39,7 @@ RUN pip3 install \
     pytest \
     pytest-cov \
     Flask \
+    psutil \
     requests
 
 # Criar usuário não-root para desenvolvimento

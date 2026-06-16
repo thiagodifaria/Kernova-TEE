@@ -1,561 +1,411 @@
 # Kernova-TEE
 
-![Kernova](https://img.shields.io/badge/Kernova--TEE-Trusted%20Execution%20Environment-0d9488?style=for-the-badge)
+![Kernova-TEE](https://img.shields.io/badge/Kernova--TEE-Trusted%20Execution%20Environment-111827?style=for-the-badge)
 
-**Type-1 Micro-Hypervisor in x86-64 Assembly for Hardware-Level Security Isolation**
+**Kernova-TEE is a research-oriented Type-1 micro-hypervisor for x86-64 systems, implemented with NASM Assembly and a C++20 orchestration layer. It explores hardware-backed isolation, VMX root-mode monitoring, SIMD-assisted secure data movement and low-level integrity checks for trusted execution scenarios.**
 
-[![Assembly](https://img.shields.io/badge/x86--64-Assembly%20(NASM)-blue?style=flat&logo=assemblyscript&logoColor=white)]()
-[![C++20](https://img.shields.io/badge/C++-20-00599C?style=flat&logo=cplusplus&logoColor=white)]()
-[![Intel VT-x](https://img.shields.io/badge/Intel-VT--x%20%7C%20VMX-0071C5?style=flat&logo=intel&logoColor=white)]()
-[![AVX-512](https://img.shields.io/badge/SIMD-AVX2%20%7C%20AVX--512-orange?style=flat)]()
-[![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
-
----
-
-## 🎯 What is Kernova?
-
-Kernova-TEE is a **Type-1 micro-hypervisor** that creates a hardware-isolated Trusted Execution Environment (TEE) using Intel VT-x virtualization extensions. Written in raw x86-64 Assembly with a C++20 orchestration layer, Kernova operates at **Ring -1** — a privilege level above the operating system kernel — to provide absolute isolation for sensitive cryptographic operations.
-
-### The Problem
-
-Modern rootkits operate at Ring 0 (kernel level), where they can intercept syscalls, modify interrupt tables, and mask their presence from traditional security software. Once a rootkit gains kernel access, the OS can no longer trust its own integrity checks.
-
-### The Solution
-
-Kernova creates a **hardware-enforced boundary** between the security monitor and the host OS:
-
-- The hypervisor runs at Ring -1 (VMX root mode)
-- The OS is **demoted to guest** status (VMX non-root mode)
-- Critical memory regions become **invisible** to the guest OS
-- Hardware-level traps detect any attempt to modify sensitive registers
-
-> **"You can't hack what you can't see."** — The hypervisor's memory is physically isolated via VT-x page tables, making it inaccessible even to kernel-mode code.
+[![Version](https://img.shields.io/badge/Version-1.0.0-2563EB?style=flat)](README.md)
+[![Assembly](https://img.shields.io/badge/x86--64-NASM-525252?style=flat)](service-api/service-cpp/src)
+[![C++](https://img.shields.io/badge/C++-20-00599C?style=flat&logo=cplusplus&logoColor=white)](service-api/service-cpp)
+[![Intel VT-x](https://img.shields.io/badge/Intel%20VT--x-VMX-0071C5?style=flat&logo=intel&logoColor=white)](service-api/service-cpp/src/core)
+[![SIMD](https://img.shields.io/badge/SIMD-AVX2%20%7C%20AVX--512-6B7280?style=flat)](service-api/service-cpp/src/marshall)
+[![Runtime](https://img.shields.io/badge/Runtime-Docker%20Compose-2496ED?style=flat&logo=docker&logoColor=white)](infra)
+[![License](https://img.shields.io/badge/License-MIT-success?style=flat)](LICENSE)
 
 ---
 
-## ⚡ Key Highlights
+## Documentation
 
-| Feature | Description |
-|---------|-------------|
-| 🛡️ **Hardware Isolation** | Ring -1 privilege via Intel VT-x (VMX root mode) |
-| ⚡ **Zero-Latency Marshalling** | AVX2/AVX-512 SIMD data transport between zones |
-| 🔍 **Rootkit Detection** | Hardware-trace monitoring of LSTAR, IDTR, CR writes |
-| 🔐 **Cryptographic Enclave** | 1MB isolated memory region for sensitive operations |
-| 🧬 **Bare-Metal Assembly** | Hand-crafted x86-64 ASM + C++20 orchestration |
-| 🔬 **VMCS Control** | Full Virtual Machine Control Structure management |
-| 📊 **Performance** | SIMD memcpy @ 45 GB/s, hash @ 2.5 GB/s |
-| 🐳 **Docker Support** | Containerized build and test environment |
+**Main README:** [README.md](README.md)  
+**Portuguese README:** [README_PT.md](README_PT.md)  
+**Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
-## 🏗️ Architecture
+## Overview
 
-### Privilege Ring Layout
+Kernova-TEE models a trusted execution boundary built around Intel VT-x. The project places a small hypervisor monitor in VMX root mode and treats the host operating system as a guest running in VMX non-root mode. The goal is to explore how a hardware-controlled monitor can isolate sensitive memory, intercept integrity-relevant events and move data through controlled marshalling paths.
 
+The project is intentionally close to the hardware. Most VMX and SIMD operations are implemented in x86-64 Assembly, while C++20 provides the orchestration layer for state management, lifecycle control, testing and development-mode execution.
+
+Kernova-TEE is best understood as a low-level security research and systems programming project. It is not a production TEE implementation and does not claim to replace mature hypervisors, hardware TEEs or kernel security frameworks.
+
+---
+
+## Problem Statement
+
+Traditional endpoint security runs at the same privilege level as the kernel or above ordinary user processes but below hardware virtualization control. Once malicious code operates in Ring 0, it can modify syscall entry points, patch kernel code, alter descriptor tables, hide memory regions and interfere with integrity checks performed by the operating system itself.
+
+Kernova explores a different control plane:
+
+- The monitor runs at VMX root mode, commonly referred to as Ring -1.
+- The operating system is moved into VMX non-root mode.
+- Sensitive monitor and enclave regions are kept outside the guest's normal control.
+- Writes to selected registers, MSRs and descriptor-related state can be routed through VMExit handling.
+
+The central design assumption is that a smaller, hardware-controlled monitor can observe and constrain selected OS-level behavior from a privilege level the guest kernel cannot directly override.
+
+---
+
+## Main Capabilities
+
+- Type-1 micro-hypervisor structure targeting Ring -1 / VMX root operation.
+- VMX bootstrap path with `VMXON`, VMCS preparation, `VMLAUNCH`, `VMRESUME`, `VMREAD`, `VMWRITE`, `VMXOFF` and `INVEPT`.
+- VMCS guest/host state modeling and processor-based execution controls.
+- VMExit-oriented monitoring for control-register writes, IA32_LSTAR changes, descriptor-table modifications and guest `VMCALL` operations.
+- SIMD data marshalling routines using AVX2 and AVX-512-oriented Assembly.
+- Secure copy, secure zeroing, pack/unpack and block-hash routines exposed as C-callable symbols.
+- C++20 orchestration for VMX initialization, enclave buffers, monitor state and development-mode self-tests.
+- Native test suite covering SIMD behavior, performance, VMCS field validation and integrity routines.
+- Docker Compose development environment for reproducible Linux builds from Windows, macOS or Linux hosts.
+- CLI and Flask dashboard for local operational workflows.
+
+---
+
+## Repository Layout
+
+```text
+client-cli/
+  main.py                         Terminal management client
+
+client-web/
+  app.py                          Flask dashboard for build/test/status operations
+  requirements.txt
+
+service-api/
+  service-cpp/
+    src/
+      boot/                       Boot entry, long-mode checks and processor setup
+      core/                       VMX initialization and VMCS configuration
+      marshall/                   SIMD pack/unpack/copy/hash routines
+      monitor/                    VMExit interception and integrity tracing
+      main.cpp                    C++20 orchestration layer
+      vmx_stubs.cpp               Userspace-safe VMX stubs for development builds
+    include/
+      vmx_defs.inc                VMCS encodings and VMX constants
+      avx_macros.inc              SIMD macro library
+      registers.hpp               CPUID, CR and MSR wrappers
+    tests/                        Native CTest suites
+    CMakeLists.txt                Primary build system
+    Makefile                      Alternative low-level build path
+    linker.ld                     Bare-metal memory layout
+
+infra/
+  Dockerfile                      Linux build and test image
+  compose.yaml                    Builder, tester and web services
+
+scripts/
+  build.sh                        Build, clean, package and pipeline entrypoint
+  test.sh                         CMake + CTest entrypoint
+  docker-entrypoint.sh            Container command dispatcher
+
+docs/
+  ARCHITECTURE.md                 Repository and subsystem boundaries
 ```
-┌──────────────────────────────────────────────────┐
-│           Ring -1 (VMX Root Mode)                │
-│              KERNOVA-TEE CORE                    │
-│                                                  │
-│  ┌────────────┐  ┌───────────────────────────┐   │
-│  │ Boot Entry │  │  VMX Initialization       │   │
-│  │ (entry.asm)│  │  • Enable CR4.VMXE        │   │
-│  │            │→ │  • VMXON region setup     │   │
-│  │ Long Mode  │  │  • VMCS configuration     │   │
-│  │ Transition │  │  • VMLAUNCH → Guest       │   │
-│  └────────────┘  └───────────────────────────┘   │
-│                                                  │
-│  ┌───────────────────────────────────────────┐   │
-│  │  SIMD Marshalling Engine                  │   │
-│  │  • AVX2 (256-bit) / AVX-512 (512-bit)     │   │
-│  │  • Parallel pack/unpack/hash              │   │
-│  │  • Zero-copy data transport               │   │
-│  └───────────────────────────────────────────┘   │
-│                                                  │
-│  ┌───────────────────────────────────────────┐   │
-│  │  Hardware Trace Monitor                   │   │
-│  │  • VMExit on CR0/CR3/CR4 writes           │   │
-│  │  • IA32_LSTAR (syscall) monitoring        │   │
-│  │  • IDTR/GDTR integrity verification       │   │
-│  │  • Anomaly detection & logging            │   │
-│  └───────────────────────────────────────────┘   │
-│                                                  │
-├──────────────────────────────────────────────────┤
-│           Ring 0 (VMX Non-Root Mode)             │
-│              HOST OS (Demoted to Guest)          │
-│                                                  │
-│  The operating system runs normally but cannot   │
-│  access hypervisor memory or modify protected    │
-│  registers without triggering a VMExit.          │
-└──────────────────────────────────────────────────┘
+
+This layout follows the same repository convention used by the other service-oriented projects in the workspace: clients stay under `client-*`, backend implementations stay under `service-api/service-*`, infrastructure stays under `infra`, operational scripts stay under `scripts`, and architectural material stays under `docs`.
+
+---
+
+## Architecture
+
+### Privilege Model
+
+```text
+Ring -1 / VMX root mode
+  Kernova monitor
+  VMX state management
+  Enclave-style memory region
+  VMExit handlers
+  Integrity tracing
+
+Ring 0 / VMX non-root mode
+  Guest operating system
+  Kernel drivers
+  Syscall entry points
+  Descriptor tables
+
+Ring 3
+  User applications
 ```
+
+The monitor is designed to operate above the guest kernel. The guest continues running normally, but selected privileged events are modeled as VMExit surfaces that can be logged, inspected or constrained by the monitor.
 
 ### Initialization Flow
 
-The system follows a strict boot sequence from bare-metal to full hypervisor operation:
-
-```
+```text
 _start (entry.asm)
-    │
-    ├── cli                         Disable interrupts
-    ├── Clear segment registers     DS=ES=FS=GS=SS=0
-    ├── Setup stack (16KB)          RSP → stack_top
-    │
-    ├── check_long_mode()           Read IA32_EFER MSR, check LMA bit
-    │   └── If not 64-bit → enable_long_mode()
-    │
-    ├── check_vmx_support()         CPUID.1:ECX.VMX[bit 5]
-    │   ├── Read IA32_FEATURE_CONTROL (MSR 0x3A)
-    │   └── Enable VMX outside SMX + set lock bit
-    │
-    ├── setup_page_tables()         Identity-mapped for VMX regions
-    │
-    ├── init_simd_state()
-    │   ├── VZEROUPPER              Clear YMM upper halves
-    │   ├── LDMXCSR                 SSE control register
-    │   └── CR4.OSFXSR + OSXMMEXCPT enable
-    │
-    └── hypervisor_init() [C++]
-        ├── monitor::init()         Trace engine setup
-        ├── enclave::init()         1MB secure memory allocation
-        ├── vmx::init()
-        │   ├── CPUID VMX check
-        │   ├── CR4.VMXE enable
-        │   ├── vmx_init [ASM]
-        │   │   ├── Alloc VMXON region (4KB aligned)
-        │   │   ├── Read IA32_VMX_BASIC for revision ID
-        │   │   ├── Write revision ID to VMXON[0:31]
-        │   │   └── VMXON instruction
-        │   └── vmcs_setup [ASM]
-        │       └── Configure guest/host state fields
-        └── hypervisor_main()
-            ├── SIMD self-tests
-            ├── Enclave send/receive test
-            ├── Integrity check
-            └── HLT loop (PoC mode)
+  -> disable interrupts
+  -> initialize stack and segment state
+  -> check long mode
+  -> check VMX support through CPUID and IA32_FEATURE_CONTROL
+  -> prepare identity-mapped regions for VMX structures
+  -> initialize SIMD state
+  -> call C++ hypervisor initialization
+
+hypervisor_init (main.cpp)
+  -> initialize trace monitor
+  -> allocate enclave buffer
+  -> initialize VMX state
+  -> prepare VMXON region
+  -> configure VMCS guest/host state
+  -> run development-mode self-tests
+  -> enter proof-of-concept idle loop
 ```
 
-### Three Core Subsystems
+### VMX Hypervisor Core
 
-#### 1. The Shield — VMX Hypervisor (`src/core/`)
+`service-api/service-cpp/src/core` contains the low-level VMX routines.
 
-A minimalist Virtual Machine Monitor (VMM) that establishes Ring -1 control:
+| Operation | Instruction / Interface | Purpose |
+|-----------|-------------------------|---------|
+| Enable VMX | `CR4.VMXE` | Allow VMX operation on the processor |
+| Enter VMX root operation | `VMXON` | Activate VMX root mode using a 4KB-aligned VMXON region |
+| Load VMCS | `VMPTRLD` | Select the active Virtual Machine Control Structure |
+| Clear VMCS | `VMCLEAR` | Reset VMCS launch state |
+| Read VMCS | `VMREAD` | Inspect VMCS fields |
+| Write VMCS | `VMWRITE` | Configure guest, host and control fields |
+| Launch guest | `VMLAUNCH` | Enter VMX non-root guest execution |
+| Resume guest | `VMRESUME` | Continue guest execution after VMExit |
+| Leave VMX | `VMXOFF` | Deactivate VMX operation |
+| Invalidate EPT translations | `INVEPT` | Flush extended-page-table translations |
 
-| Operation | Instruction | Function |
-|-----------|-------------|----------|
-| **Enable VMX** | `MOV CR4, RAX` | Set CR4.VMXE bit (bit 13) |
-| **Enter VMX** | `VMXON [RDI]` | Activate VMX root mode |
-| **Load VMCS** | `VMPTRLD [RDI]` | Set active Virtual Machine Control Structure |
-| **Launch Guest** | `VMLAUNCH` | Transfer control to guest OS |
-| **Resume Guest** | `VMRESUME` | Return control after VMExit |
-| **Read VMCS** | `VMREAD RBX, RAX` | Read VMCS field value |
-| **Write VMCS** | `VMWRITE RAX, RBX` | Write value to VMCS field |
-| **Exit VMX** | `VMXOFF` | Deactivate VMX root mode |
-| **Invalidate EPT** | `INVEPT [RSI], RDI` | Flush Extended Page Table TLB |
-
-**Key MSRs Used:**
+Important MSRs:
 
 | MSR | Address | Purpose |
 |-----|---------|---------|
-| `IA32_VMX_BASIC` | `0x480` | VMX revision ID and VMCS structure info |
-| `IA32_FEATURE_CONTROL` | `0x3A` | VMX enable/lock bits |
-| `IA32_EFER` | `0xC0000080` | Long Mode Active bit |
+| `IA32_FEATURE_CONTROL` | `0x3A` | VMX enable and lock policy |
+| `IA32_VMX_BASIC` | `0x480` | VMX revision ID and VMCS metadata |
 | `IA32_VMX_PROCBASED_CTLS` | `0x482` | Processor-based VM-execution controls |
+| `IA32_EFER` | `0xC0000080` | Long mode state and related execution features |
 
-#### 2. The Flow — SIMD Marshalling Engine (`src/marshall/`)
+### SIMD Marshalling Engine
 
-Ultra-fast data transport between the host OS and the cryptographic enclave using wide SIMD registers:
+`service-api/service-cpp/src/marshall` implements high-throughput memory routines intended for host-to-enclave data movement.
 
-**Exported Functions:**
+| Function | Description |
+|----------|-------------|
+| `simd_pack_data` | Packs source data into a destination buffer with vectorized operations |
+| `simd_unpack_data` | Extracts packed data back into a host-readable buffer |
+| `simd_secure_memcpy` | Performs aligned vectorized copy |
+| `simd_zero_memory` | Wipes memory using vector zeroing operations |
+| `simd_hash_blocks` | Provides the current block-hash primitive used by tests |
 
-| Function | Width | Description |
-|----------|-------|-------------|
-| `simd_pack_data` | 256/512-bit | Pack data into enclave with AVX |
-| `simd_unpack_data` | 256/512-bit | Extract data from enclave |
-| `simd_secure_memcpy` | 256/512-bit | VMOVDQA-based secure memory copy |
-| `simd_zero_memory` | 256/512-bit | VPXOR-based secure memory wipe |
-| `simd_hash_blocks` | 256/512-bit | SHA-256 style block hashing |
-
-**Key Instructions:**
+Representative instruction families:
 
 ```nasm
-; AVX2 — 256-bit operations
-VMOVDQA  YMM0, [RSI]          ; Load 32 bytes aligned
-VPXOR    YMM0, YMM0, YMM1     ; XOR 32 bytes at once
-VMOVDQA  [RDI], YMM0          ; Store 32 bytes aligned
-VZEROUPPER                     ; Clear upper YMM to avoid SSE penalties
-
-; AVX-512 — 512-bit operations (when available)
-VMOVDQA64 ZMM0, [RSI]         ; Load 64 bytes aligned
-VPXORQ    ZMM0, ZMM0, ZMM1    ; XOR 64 bytes at once
-VMOVDQA64 [RDI], ZMM0         ; Store 64 bytes aligned
+VMOVDQA    ; aligned vector load/store
+VPXOR      ; vector XOR and zeroing primitive
+VZEROUPPER ; avoid AVX/SSE transition penalties
+VMOVDQA64  ; AVX-512 aligned 64-byte vector access
+VPXORQ     ; AVX-512 quadword XOR
 ```
 
-#### 3. The Watch — Hardware Trace Monitor (`src/monitor/`)
+### Hardware Trace Monitor
 
-Real-time integrity auditor operating via VMExit interception:
+`service-api/service-cpp/src/monitor` models monitor-side event logging and integrity checks.
 
-| VMExit Reason | Trigger | Response |
-|---------------|---------|----------|
-| `EXIT_REASON_CR_ACCESS` | Write to CR0/CR3/CR4 | Log + validate change |
-| `EXIT_REASON_MSR_WRITE` | Write to IA32_LSTAR | Alert: possible syscall hook |
-| `EXIT_REASON_GDTR_IDTR` | Modify GDT/IDT base | Alert: possible IDT hooking |
-| `EXIT_REASON_VMCALL` | Guest VMCALL instruction | Process guest request |
-| `EXIT_REASON_EXCEPTION` | Hardware exception | Log + forward to guest |
+| Surface | Security relevance |
+|---------|--------------------|
+| CR0/CR3/CR4 writes | Paging, write-protection and VMX-related state can be altered here |
+| IA32_LSTAR writes | Syscall entry-point hooks are commonly expressed through this MSR |
+| IDTR/GDTR changes | Descriptor-table relocation can indicate interrupt or exception interception |
+| `VMCALL` | Provides a guest-to-hypervisor request interface |
+| Watchpoint configuration | Tracks memory regions for integrity-sensitive changes |
 
-**VMCALL Interface (Guest → Hypervisor):**
-
-| Function Code | Operation | Parameters |
-|---------------|-----------|------------|
-| `0` | Echo test | `param1`, `param2` → returns sum |
-| `1` | Enclave send | `param1`=data ptr, `param2`=size |
-| `2` | Integrity check | None → returns 0 if clean |
+The C-callable monitor functions include `trace_init`, `trace_log_event`, `trace_check_integrity` and `trace_set_watchpoint`.
 
 ---
 
-## 📁 Project Structure
+## Source Code Breakdown
 
-```
-Kernova/
-├── src/                              # Source code (~1,630 lines)
-│   ├── boot/
-│   │   └── entry.asm                 # Boot entry, Long Mode, GDT (323 lines)
-│   ├── core/
-│   │   ├── vmx_init.asm              # VMX activation & VMXON/VMXOFF (387 lines)
-│   │   └── vmcs_config.asm           # VMCS field configuration
-│   ├── marshall/
-│   │   └── simd_packer.asm           # AVX2/AVX-512 marshalling engine
-│   ├── monitor/
-│   │   ├── intercept.asm             # VMExit dispatch & handlers
-│   │   └── trace_engine.asm          # Hardware trace & rootkit detector
-│   └── main.cpp                      # C++20 orchestrator (560 lines)
-│
-├── include/                          # Headers & macros
-│   ├── vmx_defs.inc                  # VMCS encodings & VMX constants
-│   ├── avx_macros.inc                # SIMD marshalling macro library
-│   └── registers.hpp                 # C++ CR/MSR wrapper classes
-│
-├── tests/                            # Test suites
-│   ├── test_simd.cpp                 # SIMD memcpy, hash, pack/unpack
-│   ├── test_performance.cpp          # Throughput & latency benchmarks
-│   ├── test_integrity.cpp            # Hash determinism & avalanche effect
-│   └── test_vmcs.cpp                 # VMCS configuration validation
-│
-├── interface/                        # Management interfaces
-│   ├── cli.py                        # Interactive CLI (build/test/run/debug)
-│   └── web.py                        # Flask web dashboard (port 5000)
-│
-├── scripts/                          # Automation
-│   ├── build.sh                      # Full build script with dependency install
-│   ├── test.sh                       # 12+ automated validation tests
-│   └── docker-entrypoint.sh          # Docker container entry point
-│
-├── docker/                           # Container configuration
-│   ├── Dockerfile                    # Ubuntu 22.04 build environment
-│   └── docker-compose.yml            # Builder, tester, web services
-│
-├── CMakeLists.txt                    # CMake build (primary)
-├── Makefile                          # Alternative Make build
-└── linker.ld                         # Custom linker (memory layout)
-```
-
-### Source Code Breakdown
-
-| Module | Language | Lines | Key Content |
-|--------|----------|-------|-------------|
-| `entry.asm` | ASM | 323 | Multiboot2 header, `_start`, Long Mode check, `check_vmx_support`, `init_simd_state`, GDT64, exception handler |
-| `vmx_init.asm` | ASM | 387 | `vmx_init`, `enable_cr4_vmx`, VMXON region allocation, `do_vmxon`/`do_vmxoff`, `vmx_launch`/`vmx_resume`, `vmx_invept` |
-| `vmcs_config.asm` | ASM | ~250 | VMCS guest/host state, execution controls, exit/entry controls |
-| `simd_packer.asm` | ASM | ~200 | `simd_pack_data`, `simd_unpack_data`, `simd_secure_memcpy`, `simd_zero_memory`, `simd_hash_blocks` |
-| `intercept.asm` | ASM | ~180 | VMExit dispatch, CR access handler, MSR write handler, VMCALL handler |
-| `trace_engine.asm` | ASM | ~150 | `trace_init`, `trace_log_event`, `trace_check_integrity`, `trace_set_watchpoint` |
-| `main.cpp` | C++20 | 560 | `HypervisorState`, `enclave::` namespace (alloc/send/receive), `vmx::` namespace (init/setup/launch), `monitor::` namespace (init/check), `testing::` namespace, `vmcall_handler` |
-| `registers.hpp` | C++20 | ~100 | `CPUID::get_features()`, `CR4::enable_vmx()`, MSR read/write wrappers |
+| Module | Language | Purpose |
+|--------|----------|---------|
+| `src/boot/entry.asm` | NASM | Boot entry, long-mode checks, VMX support checks and SIMD setup |
+| `src/core/vmx_init.asm` | NASM | VMXON region setup, VMX activation and VMX transition helpers |
+| `src/core/vmcs_config.asm` | NASM | VMCS guest/host state and control-field configuration |
+| `src/marshall/simd_packer.asm` | NASM | SIMD copy, zero, pack, unpack and block-hash routines |
+| `src/monitor/intercept.asm` | NASM | VMExit dispatch and handler stubs |
+| `src/monitor/trace_engine.asm` | NASM | Event logging, integrity checks and watchpoint handling |
+| `src/main.cpp` | C++20 | Hypervisor, enclave, VMX, monitor and test orchestration |
+| `src/vmx_stubs.cpp` | C++20 | Development-mode VMX stubs for userspace builds |
+| `include/registers.hpp` | C++20 | CPUID, control-register and MSR helper wrappers |
+| `include/vmx_defs.inc` | NASM | VMCS constants and VMX definitions |
+| `include/avx_macros.inc` | NASM | AVX helper macros |
 
 ---
 
-## ⚡ Quick Start
+## Requirements
 
-### Prerequisites
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install build-essential cmake nasm qemu-system-x86 python3
-
-# Fedora/RHEL
-sudo dnf install gcc-c++ cmake nasm qemu-system-x86 python3
-
-# macOS
-brew install cmake nasm qemu python3
-```
-
-### Hardware Requirements
+### Host Requirements
 
 | Requirement | Detail |
 |-------------|--------|
-| **CPU** | Intel with VT-x support (Core i3+ or Xeon) |
-| **SIMD** | AVX2 (recommended) or AVX-512 (optimal) |
-| **BIOS** | Intel Virtualization Technology enabled |
-| **RAM** | Minimum 4GB |
-| **OS** | Linux (native), macOS (QEMU), Windows (WSL2) |
+| CPU | Intel processor with VT-x support for hardware execution |
+| Firmware | Intel Virtualization Technology enabled in BIOS/UEFI |
+| SIMD | AVX2 recommended; AVX-512 paths are modeled where available |
+| OS | Linux for direct native validation; Docker is recommended from Windows/macOS |
+| Toolchain | CMake, NASM, GCC/G++, QEMU and Docker for the standard workflow |
 
-### Build & Run
-
-There are 4 ways to build and run Kernova:
-
-| Method | Best For | Command |
-|--------|----------|---------|
-| **CLI** | Daily development | `python3 interface/cli.py` |
-| **CMake** | Manual control | `mkdir build && cd build && cmake .. && make -j$(nproc)` |
-| **Automated** | Full pipeline | `./scripts/build.sh --all` |
-| **Docker** | CI/CD, isolation | `docker-compose -f docker/docker-compose.yml run builder` |
-
-#### Option 1: Interactive CLI (Recommended)
+### Linux Packages
 
 ```bash
-git clone https://github.com/thiagodifaria/Kernova.git
-cd Kernova
-
-# Interactive menu
-python3 interface/cli.py
-
-# Or direct commands
-python3 interface/cli.py build --clean    # Compile
-python3 interface/cli.py test             # Run tests
-python3 interface/cli.py run              # Run in QEMU
-python3 interface/cli.py run --debug      # Debug with GDB
-python3 interface/cli.py status           # Project status
+sudo apt-get update
+sudo apt-get install -y build-essential cmake nasm qemu-system-x86 gdb python3 docker.io
 ```
 
-#### Option 2: CMake
+---
+
+## Build and Run
+
+### Docker Build
 
 ```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-ctest --verbose
+docker compose -f infra/compose.yaml run --rm builder
 ```
 
-#### Option 3: Automated Script
+### Docker Test
 
 ```bash
-./scripts/build.sh --all        # deps + build + test
-./scripts/build.sh --build      # build only
-./scripts/build.sh --clean      # clean + rebuild
+docker compose -f infra/compose.yaml run --rm tester
 ```
 
-#### Option 4: Docker
+### CLI
 
 ```bash
-# Build environment
-docker-compose -f docker/docker-compose.yml run builder
-
-# Run tests
-docker-compose -f docker/docker-compose.yml run tester
-
-# Web dashboard
-docker-compose -f docker/docker-compose.yml up web
-# Access: http://localhost:5000
+python3 client-cli/main.py
+python3 client-cli/main.py build --clean
+python3 client-cli/main.py test
+python3 client-cli/main.py status
+python3 client-cli/main.py run
+python3 client-cli/main.py run --debug
 ```
 
-> **Note:** VT-x does not work inside Docker containers (hardware limitation). Docker is used for build, unit tests, and CI/CD only.
-
----
-
-## 🧪 Testing
-
-### Test Suites
-
-| Test | Validates | VT-x Required |
-|------|-----------|---------------|
-| `test_simd` | SIMD memcpy, hash, pack/unpack, zero memory | No |
-| `test_performance` | Throughput and latency benchmarks | No |
-| `test_integrity` | Hash determinism, avalanche effect, modification detection | No |
-| `test_vmcs` | VMCS configuration, field encoding validation | Yes |
-
-### Running Tests
+### Web Dashboard
 
 ```bash
-# All tests
-cd build && ctest --output-on-failure
-
-# Individual tests
-./build/tests/test_simd
-./build/tests/test_performance
-./build/tests/test_integrity
+docker compose -f infra/compose.yaml up web
 ```
 
-### Automated Validation Script
+The dashboard is exposed at `http://localhost:5000`.
 
-The `scripts/test.sh` script runs 12+ checks:
-
-```
-✓ Binary exists
-✓ Dependencies installed (gcc, nasm, cmake)
-✓ Project structure integrity
-✓ Assembly syntax validation
-✓ C++ syntax validation
-✓ VT-x hardware support
-✓ AVX2/AVX-512 support
-✓ File integrity checksums
-```
-
----
-
-## 🔧 Running the Hypervisor
-
-### QEMU (Development)
+### Manual CMake Build
 
 ```bash
-# With KVM acceleration (Linux)
-qemu-system-x86_64 -enable-kvm -m 2G -kernel build/Kernova -nographic
-
-# Without KVM (any OS)
-qemu-system-x86_64 -m 2G -kernel build/Kernova -nographic
+cmake -S service-api/service-cpp -B service-api/service-cpp/build -DCMAKE_BUILD_TYPE=Release
+cmake --build service-api/service-cpp/build --parallel
+ctest --test-dir service-api/service-cpp/build --output-on-failure
 ```
 
-### Bootable ISO
+### QEMU
 
 ```bash
-cd build
-make iso
-# Result: Kernova.iso
-qemu-system-x86_64 -m 2G -cdrom Kernova.iso
+qemu-system-x86_64 -enable-kvm -m 2G -kernel service-api/service-cpp/build/Kernova -nographic
 ```
 
-### Debugging with GDB
+For debug mode:
 
 ```bash
-# Terminal 1: Start QEMU in debug mode
-qemu-system-x86_64 -enable-kvm -m 2G -kernel build/Kernova -s -S -nographic
-
-# Terminal 2: Attach GDB
-gdb build/Kernova
-(gdb) target remote :1234
-(gdb) hbreak _start              # Hardware breakpoint at entry
-(gdb) continue
-(gdb) hbreak vmx_init            # Break at VMX init
-(gdb) info registers             # View all registers
-(gdb) x/10i $pc                  # Disassemble next 10 instructions
-(gdb) stepi                      # Single step (instruction)
-```
-
-**Useful GDB Commands for VMX:**
-
-```gdb
-vmread 0x6800                    # Read Guest CR0
-vmread 0x4402                    # Read VM exit reason
-vmread 0x4400                    # Read VM instruction error
-x/10x 0x200000                   # Examine VMXON region
+qemu-system-x86_64 -enable-kvm -m 2G -kernel service-api/service-cpp/build/Kernova -s -S -nographic
+gdb service-api/service-cpp/build/Kernova
 ```
 
 ---
 
-## 📊 Performance Benchmarks
+## Testing
 
-Typical results on Intel i7-12700K:
+The project uses CTest from the C++ service build directory.
 
-| Operation | Throughput | Latency | Method |
-|-----------|-----------|---------|--------|
-| SIMD Memcpy (AVX2) | 45 GB/s | 22 ns | `VMOVDQA YMM` |
-| SIMD Memcpy (AVX-512) | 62 GB/s | 16 ns | `VMOVDQA64 ZMM` |
-| Pack/Unpack | 38 GB/s | 26 ns | `VPXOR` + `VMOVDQA` |
-| SHA-256 Hash | 2.5 GB/s | 102 ns | Block-level SIMD |
-| Memory Zero | 50 GB/s | 20 ns | `VPXOR` + `VMOVDQA` |
-| VMExit Overhead | — | ~1-2% | Hardware trap |
-
----
-
-## 🔒 Memory Layout
-
-```
-Address       Region                Size    Protection         Description
-────────────────────────────────────────────────────────────────────────────
-0x100000      Hypervisor Code       256KB   Ring -1 only       .text + .rodata
-0x200000      VMXON Region          4KB     VMX root           4KB-aligned, revision ID at [0:31]
-0x201000      VMCS Region           4KB     VMX root           Active VM control structure
-0x202000      Hypervisor Stack      16KB    Ring -1             stack_bottom → stack_top
-0x210000      Crypto Enclave        1MB     Isolated            aligned_alloc(4096, 0x100000)
-0x310000      Data Buffer           64KB    Ring -1             SIMD pack/unpack staging
-0x410000      Trace Buffer          64KB    Ring -1             1024 trace event entries
+```bash
+./scripts/test.sh
 ```
 
----
+Test suites:
 
-## 🛡️ Security Model
+| Test | Scope | VT-x required |
+|------|-------|---------------|
+| `test_simd` | SIMD copy, zeroing, pack/unpack and hash behavior | No |
+| `test_vmcs` | VMCS field encoding and configuration invariants | No direct VMX execution |
+| `test_performance` | SIMD throughput and latency measurements | No |
+| `test_integrity` | Hash determinism, avalanche behavior, collision checks and monitor routines | No |
 
-### Threat Mitigation
+Current validation status:
 
-| Threat Vector | Detection Method | Implementation |
-|---------------|-----------------|----------------|
-| **Kernel Rootkits** | VMExit on CR0/CR3/CR4 writes | `intercept.asm` → CR access handler |
-| **Syscall Hooking** | IA32_LSTAR MSR monitoring | `trace_engine.asm` → MSR write trap |
-| **IDT Manipulation** | IDTR base change detection | `intercept.asm` → GDTR/IDTR handler |
-| **Memory Tampering** | VT-x page table isolation | EPT (Extended Page Tables) |
-| **Code Injection** | Enclave integrity hashing | `simd_hash_blocks` verification |
-| **Side-Channel** | RDRAND hardware RNG | Nondeterministic key material |
-
-### Known Limitations
-
-| Limitation | Reason | Mitigation |
-|------------|--------|------------|
-| Intel only | Uses VT-x (VMX) instructions | Current scope is Intel-focused |
-| BIOS dependency | VT-x must be enabled | Error message guides user |
-| ~1-2% overhead | VMExit processing cost | Minimized exit handlers |
-| No Docker VT-x | Hardware limitation | Docker used for build/test only |
+- Docker/Linux build succeeds.
+- `test_simd`, `test_vmcs` and `test_performance` pass.
+- `test_integrity` currently fails known hash-quality assertions related to avalanche and collision behavior in `simd_hash_blocks`.
 
 ---
 
-## 🔧 Technical Stack
+## Memory Layout
 
-| Component | Technology |
-|-----------|------------|
-| **Core Language** | x86-64 Assembly (NASM syntax) |
-| **System Language** | C++20 with `-ffreestanding -nostdlib` |
-| **Virtualization** | Intel VT-x (VMX root/non-root mode) |
-| **SIMD** | AVX2 (256-bit) + AVX-512 (512-bit) |
-| **Hardware RNG** | RDRAND instruction |
-| **Build System** | CMake 3.20+ / Make |
-| **Debug** | GDB + QEMU 7.0+ |
-| **Container** | Docker + Docker Compose |
-| **CLI** | Python 3 (interactive menu) |
-| **Web Dashboard** | Flask + psutil (port 5000) |
-| **Linker** | Custom `linker.ld` with memory sections |
-| **Boot** | Multiboot2 specification |
+The linker script models the intended bare-metal memory organization:
 
-### Compiler Flags
-
-| Configuration | Flags |
-|---------------|-------|
-| **C++ Release** | `-O3 -DNDEBUG -march=native` |
-| **C++ Debug** | `-g -O0 -Wall -Wextra -Wpedantic` |
-| **C++ Freestanding** | `-ffreestanding -nostdlib -fno-exceptions -fno-rtti` |
-| **NASM** | `-f elf64` |
-| **Linker** | `-nostdlib -static -T linker.ld` |
+```text
+Address     Region                 Size    Purpose
+0x100000    Hypervisor code         256KB   .text and read-only data
+0x200000    VMXON region             4KB    VMXON structure with VMX revision ID
+0x201000    VMCS region              4KB    Active Virtual Machine Control Structure
+0x202000    Hypervisor stack         16KB   Ring -1 stack region
+0x210000    Enclave region           1MB    Protected working memory
+0x310000    Data buffer              64KB   SIMD staging buffer
+0x410000    Trace buffer             64KB   Event and integrity trace storage
+```
 
 ---
 
-## 📚 References
+## Security Model
 
-- [Intel SDM Volume 3C: VMX](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html) — Chapters 23-33
-- [Intel Architecture Instruction Set Extensions](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/) — AVX/AVX-512
-- [AMD64 Architecture Programmer's Manual Vol. 2](https://developer.amd.com/resources/developer-guides-manuals/) — System Programming
-- [NASM Documentation](https://www.nasm.us/docs.php)
-- [OSDev Wiki: Hypervisor](https://wiki.osdev.org/)
-- [QEMU Documentation](https://www.qemu.org/docs/master/)
+Kernova-TEE focuses on a narrow set of low-level threat surfaces.
+
+| Threat surface | Detection or control path |
+|----------------|---------------------------|
+| Kernel rootkits modifying paging or control state | VMExit on selected control-register operations |
+| Syscall table or syscall entry hooking | IA32_LSTAR monitoring |
+| Descriptor-table manipulation | IDTR/GDTR integrity checks |
+| Memory tampering in monitored regions | Watchpoints and integrity buffer checks |
+| Guest-to-monitor communication | Restricted `VMCALL` interface |
+
+Limitations:
+
+- This is a proof of concept, not a formally verified TEE.
+- The current hash primitive is not cryptographically sufficient, as reflected by `test_integrity`.
+- VMX root execution cannot be validated inside standard Docker containers.
+- Hardware behavior depends on CPU model, firmware configuration and host virtualization policy.
+- The project does not yet implement a complete EPT-based isolation policy suitable for production use.
 
 ---
 
-## 📞 Contact
+## Benchmarks
 
-**Thiago Di Faria** — [thiagodifaria@gmail.com](mailto:thiagodifaria@gmail.com)
+The project includes benchmark-oriented tests for SIMD throughput and latency. Historical target figures documented by the project include:
 
-[![GitHub](https://img.shields.io/badge/GitHub-@thiagodifaria-black?style=flat&logo=github)](https://github.com/thiagodifaria)
+| Operation | Target / observed class | Implementation approach |
+|-----------|--------------------------|-------------------------|
+| SIMD memcpy | Tens of GB/s on modern desktop CPUs | `VMOVDQA` / vectorized copy |
+| Pack/unpack | High-throughput staging path | XOR and aligned vector load/store |
+| Memory zeroing | Vector-width clearing | `VPXOR` plus vector stores |
+| Block hashing | Experimental SIMD primitive | Assembly block routine |
+| VMExit overhead | Hardware-dependent | VMX transition path |
+
+Benchmark results should be interpreted as development measurements, not portable guarantees.
 
 ---
 
-### 🌟 **Star this project if you're into low-level security!**
+## Operational Notes
 
-**Made with ❤️ by [Thiago Di Faria](https://github.com/thiagodifaria)**
+- Use Docker Compose for the most reliable build path from Windows.
+- The Compose stack stores Linux build artifacts in a Docker volume to avoid conflicts with Windows CMake caches.
+- Native Windows/MinGW builds may fail on POSIX allocation APIs and ELF-oriented assembly assumptions.
+- QEMU execution requires a suitable kernel image and host virtualization support.
+- Docker is appropriate for compilation, tests and the dashboard, but not for direct VT-x execution.
 
-*Isolation. Performance. Vigilance.* 🛡️
+---
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
+## Contact
+
+Thiago Di Faria - [thiagodifaria@gmail.com](mailto:thiagodifaria@gmail.com)

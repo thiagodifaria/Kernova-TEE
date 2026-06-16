@@ -8,6 +8,7 @@ from flask import Flask, render_template, jsonify, request
 import subprocess
 import json
 import os
+import shutil
 from pathlib import Path
 import psutil
 import time
@@ -19,19 +20,20 @@ class ProjectManager:
 
     def __init__(self):
         self.root = Path(__file__).parent.parent
-        self.build_dir = self.root / 'build'
+        self.service_dir = self.root / 'service-api' / 'service-cpp'
+        self.build_dir = self.service_dir / 'build'
 
     def build(self, clean=False):
         """Compila o projeto"""
         if clean:
-            subprocess.run(['rm', '-rf', str(self.build_dir)], cwd=self.root)
+            shutil.rmtree(self.build_dir, ignore_errors=True)
 
         self.build_dir.mkdir(exist_ok=True)
 
         # CMake configure
         result = subprocess.run(
-            ['cmake', '..'],
-            cwd=self.build_dir,
+            ['cmake', '-S', str(self.service_dir), '-B', str(self.build_dir)],
+            cwd=self.root,
             capture_output=True,
             text=True
         )
@@ -41,8 +43,8 @@ class ProjectManager:
 
         # Make
         result = subprocess.run(
-            ['make', '-j4'],
-            cwd=self.build_dir,
+            ['cmake', '--build', str(self.build_dir), '--parallel', '4'],
+            cwd=self.root,
             capture_output=True,
             text=True
         )

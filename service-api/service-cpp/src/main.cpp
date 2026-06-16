@@ -10,7 +10,7 @@
 #include <cstring>
 #include <utility>
 
-#include "../include/registers.hpp"
+#include "registers.hpp"
 
 // =============================================================================
 // External Assembly Functions

@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import argparse
+import shutil
 from pathlib import Path
 from typing import List, Tuple
 
@@ -45,14 +46,18 @@ def log_error(msg: str):
 def log_warning(msg: str):
     print(f"{Colors.YELLOW}[!]{Colors.NC} {msg}")
 
-def run_command(cmd: List[str], show_output: bool = True) -> Tuple[int, str, str]:
+def run_command(
+    cmd: List[str],
+    show_output: bool = True,
+    cwd: Path | None = None,
+) -> Tuple[int, str, str]:
     """Executa comando e retorna status"""
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            cwd=get_project_root()
+            cwd=cwd or get_project_root()
         )
 
         if show_output and result.stdout:
@@ -66,6 +71,9 @@ def run_command(cmd: List[str], show_output: bool = True) -> Tuple[int, str, str
 def get_project_root() -> Path:
     """Retorna diretório raiz do projeto"""
     return Path(__file__).parent.parent
+
+def get_service_dir() -> Path:
+    return get_project_root() / 'service-api' / 'service-cpp'
 
 def check_dependencies() -> bool:
     """Verifica se dependências estão instaladas"""
@@ -91,24 +99,32 @@ def build_project(clean: bool = False) -> bool:
     """Compila o projeto"""
     log_info("Compilando projeto...")
 
-    if clean:
+    service_dir = get_service_dir()
+    build_dir = service_dir / 'build'
+
+    if clean and build_dir.exists():
         log_info("Limpando build anterior...")
-        run_command(['rm', '-rf', 'build'])
+        shutil.rmtree(build_dir)
 
     # Criar diretório build
-    build_dir = get_project_root() / 'build'
     build_dir.mkdir(exist_ok=True)
 
     # Configurar CMake
     log_info("Configurando CMake...")
-    ret, _, _ = run_command(['cmake', '..'], show_output=False)
+    ret, _, _ = run_command(
+        ['cmake', '-S', str(service_dir), '-B', str(build_dir)],
+        show_output=False,
+    )
     if ret != 0:
         log_error("CMake configure failed")
         return False
 
     # Compilar
     log_info("Compilando...")
-    ret, _, _ = run_command(['make', '-j4'], show_output=False)
+    ret, _, _ = run_command(
+        ['cmake', '--build', str(build_dir), '--parallel', '4'],
+        show_output=False,
+    )
     if ret != 0:
         log_error("Compilação falhou")
         return False
@@ -132,9 +148,9 @@ def run_qemu(debug: bool = False) -> bool:
     """Roda no QEMU"""
     log_info("Iniciando QEMU...")
 
-    binary = get_project_root() / 'build' / 'Kernova'
+    binary = get_service_dir() / 'build' / 'Kernova'
     if not binary.exists():
-        log_error("Binário não encontrado. Execute: python3 interface/cli.py build")
+        log_error("Binário não encontrado. Execute: python3 client-cli/main.py build")
         return False
 
     cmd = ['qemu-system-x86_64', '-m', '2G', '-nographic', '-kernel', str(binary)]
@@ -158,10 +174,10 @@ def run_qemu(debug: bool = False) -> bool:
 
 def run_docker_build() -> bool:
     """Build Docker image"""
-    log_info "Building Docker image..."
+    log_info("Building Docker image...")
 
     ret, _, _ = run_command([
-        'docker', 'build', '-t', 'Kernova:latest', '.'
+        'docker', 'compose', '-f', 'infra/compose.yaml', 'build'
     ])
 
     return ret == 0
@@ -171,7 +187,8 @@ def run_docker_run(service: str = 'builder') -> bool:
     log_info(f"Iniciando Docker service: {service}")
 
     ret, _, _ = run_command([
-        'docker-compose', 'run', '--rm', service
+        'docker', 'compose', '-f', 'infra/compose.yaml',
+        'run', '--rm', service
     ])
 
     return ret == 0
@@ -181,10 +198,8 @@ def show_status():
     log_info("Status do projeto:")
     print()
 
-    root = get_project_root()
-
     # Verificar binário
-    binary = root / 'build' / 'Kernova'
+    binary = get_service_dir() / 'build' / 'Kernova'
     if binary.exists():
         size = binary.stat().st_size
         log_success(f"✓ Binário: {size:,} bytes")
@@ -257,11 +272,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos:
-  python3 interface/cli.py build           # Compila projeto
-  python3 interface/cli.py test            # Roda testes
-  python3 interface/cli.py run             # Roda no QEMU
-  python3 interface/cli.py status          # Mostra status
-  python3 interface/cli.py                 # Menu interativo
+  python3 client-cli/main.py build           # Compila projeto
+  python3 client-cli/main.py test            # Roda testes
+  python3 client-cli/main.py run             # Roda no QEMU
+  python3 client-cli/main.py status          # Mostra status
+  python3 client-cli/main.py                 # Menu interativo
         """
     )
 
@@ -306,7 +321,9 @@ Exemplos:
 
     elif args.command == 'clean':
         log_info("Limpando...")
-        run_command(['rm', '-rf', 'build'])
+        build_dir = get_service_dir() / 'build'
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
         log_success("Limpeza completa")
         return 0
 

@@ -38,10 +38,8 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
 
-# NASM include paths:
-#   - Project root so relative paths like '../../include/' resolve from src/core/
-#   - Include directory directly for simple includes
-set(CMAKE_ASM_NASM_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/ -I${CMAKE_CURRENT_SOURCE_DIR}/include/")
+# NASM headers are owned by this service.
+set(CMAKE_ASM_NASM_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/include/")
 
 # =============================================================================
 # Source Files
@@ -152,8 +150,9 @@ add_subdirectory(tests)
 # Documentation
 # =============================================================================
 find_package(Doxygen)
-if(DOXYGEN_FOUND)
-    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in)
+set(PROJECT_DOCS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../docs)
+if(DOXYGEN_FOUND AND EXISTS ${PROJECT_DOCS_DIR}/Doxyfile.in)
+    set(DOXYGEN_IN ${PROJECT_DOCS_DIR}/Doxyfile.in)
     set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 
     configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
